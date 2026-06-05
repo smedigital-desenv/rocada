@@ -1,0 +1,232 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   ESTILOS GLOBAIS
+   ============================================ */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 3.6%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.6%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 3.6%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --accent: 0 0% 9.0%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --primary: 210 40% 96%;
+  --primary-foreground: 210 40% 3.1%;
+  --secondary: 217.2 91.2% 59.8%;
+  --secondary-foreground: 210 40% 98%;
+  --ring: 210 40% 96%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 0 0% 3.6%;
+    --foreground: 0 0% 98.2%;
+    --card: 0 0% 3.6%;
+    --card-foreground: 0 0% 98.2%;
+    --popover: 0 0% 3.6%;
+    --popover-foreground: 0 0% 98.2%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 98.2%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 86% 97.3%;
+    --destructive-foreground: 0 72% 51%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --primary: 210 40% 96%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 217.2 91.2% 59.8%;
+    --secondary-foreground: 0 0% 9%;
+    --ring: 212.7% 26.8% 83.9%;
+  }
+}
+
+* {
+  @apply border-border;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+}
+
+/* ============================================
+   COMPONENTES CUSTOMIZADOS
+   ============================================ */
+
+/* Scrollbar customizado */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted rounded-full hover:bg-muted-foreground;
+}
+
+/* Focus visible customizado */
+@layer base {
+  *:focus-visible {
+    @apply outline-offset-2 outline-2 outline-ring;
+  }
+}
+
+/* Animações */
+@layer utilities {
+  @keyframes slideDown {
+    from {
+      @apply opacity-0 -translate-y-2;
+    }
+    to {
+      @apply opacity-100 translate-y-0;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      @apply opacity-0 translate-y-2;
+    }
+    to {
+      @apply opacity-100 translate-y-0;
+    }
+  }
+
+  @keyframes slideInFromLeft {
+    from {
+      @apply opacity-0 -translate-x-2;
+    }
+    to {
+      @apply opacity-100 translate-x-0;
+    }
+  }
+
+  .animate-slide-down {
+    @apply animate-in fade-in slide-in-from-top-2;
+  }
+
+  .animate-slide-up {
+    @apply animate-in fade-in slide-in-from-bottom-2;
+  }
+
+  .animate-slide-in-left {
+    @apply animate-in fade-in slide-in-from-left-2;
+  }
+}
+
+/* Tables */
+@layer components {
+  .table-container {
+    @apply w-full overflow-x-auto;
+  }
+
+  .table {
+    @apply w-full border-collapse;
+  }
+
+  .table-head {
+    @apply bg-muted text-sm font-semibold;
+  }
+
+  .table-row {
+    @apply border-b hover:bg-muted/50 transition-colors;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm;
+  }
+}
+
+/* Cards */
+@layer components {
+  .card {
+    @apply rounded-lg border bg-card p-6 shadow-sm;
+  }
+
+  .card-header {
+    @apply mb-4 flex items-center justify-between;
+  }
+
+  .card-title {
+    @apply text-2xl font-bold;
+  }
+
+  .card-description {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .card-content {
+    @apply space-y-4;
+  }
+
+  .card-footer {
+    @apply mt-6 flex justify-end gap-2;
+  }
+}
+
+/* Badges */
+@layer components {
+  .badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
+  }
+
+  .badge-primary {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .badge-secondary {
+    @apply bg-secondary text-secondary-foreground;
+  }
+
+  .badge-success {
+    @apply bg-success/20 text-success;
+  }
+
+  .badge-warning {
+    @apply bg-warning/20 text-warning;
+  }
+
+  .badge-danger {
+    @apply bg-danger/20 text-danger;
+  }
+}
+
+/* Alerts */
+@layer components {
+  .alert {
+    @apply rounded-lg border p-4;
+  }
+
+  .alert-info {
+    @apply border-info/50 bg-info/10 text-info;
+  }
+
+  .alert-success {
+    @apply border-success/50 bg-success/10 text-success;
+  }
+
+  .alert-warning {
+    @apply border-warning/50 bg-warning/10 text-warning;
+  }
+
+  .alert-danger {
+    @apply border-danger/50 bg-danger/10 text-danger;
+  }
+}
