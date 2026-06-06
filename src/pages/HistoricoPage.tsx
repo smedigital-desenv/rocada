@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter } from 'lucide-react';
+import { Filter } from 'lucide-react';
 import { useRegioes } from '../hooks/useQueries';
 import { supabase } from '../lib/supabase';
 import { useQuery } from '@tanstack/react-query';
