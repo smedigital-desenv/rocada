@@ -74,7 +74,7 @@ const AppContent: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router basename="/rocada">
         <AuthProvider>
           <AppContent />
         </AuthProvider>
