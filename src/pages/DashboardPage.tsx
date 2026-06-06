@@ -32,13 +32,6 @@ export const DashboardPage: React.FC = () => {
     );
   }
 
-  const COLORS = {
-    EM_DIA: '#10b981',
-    ATENCAO: '#f59e0b',
-    CRITICO: '#ef4444',
-    PENDENCIA_SME: '#3b82f6',
-  };
-
   return (
     <div className="space-y-8">
       {/* Page Header */}

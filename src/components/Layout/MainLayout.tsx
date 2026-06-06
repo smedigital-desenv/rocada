@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Menu, X, LogOut, Home, CheckSquare, ClipboardList, BarChart3, Settings, LogsIcon } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { Menu, X, LogOut, Home, CheckSquare, ClipboardList, BarChart3, Settings, FileText } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const MainLayout: React.FC = () => {
   const { usuario, logout, isSME, isEmpresa } = useAuth();
@@ -44,7 +44,7 @@ export const MainLayout: React.FC = () => {
     },
     {
       label: 'Histórico',
-      icon: LogsIcon,
+      icon: FileText,
       href: '/historico',
       show: true,
     },
