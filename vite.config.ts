@@ -4,7 +4,6 @@ import path from 'path';
  
 export default defineConfig({
   plugins: [react()],
-  base: '/rocada/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -16,3 +15,4 @@ export default defineConfig({
     minify: 'esbuild',
   },
 });
+ 
