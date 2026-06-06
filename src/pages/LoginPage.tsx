@@ -15,99 +15,73 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
       await login(email, password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'Erro ao fazer login');
+      setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-light to-primary flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-card rounded-lg shadow-lg p-8">
-        {/* Logo / Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Roçadas</h1>
-          <p className="text-muted-foreground">
-            Sistema de Controle de Roçadas - Rede Municipal de Educação
-          </p>
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-white text-2xl font-bold">R</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Sistema de Roçadas</h1>
+          <p className="text-sm text-gray-500">Rede Municipal de Educação</p>
         </div>
 
-        {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-danger/10 border border-danger/20 rounded-lg flex items-start gap-3">
-            <AlertCircle className="text-danger flex-shrink-0 mt-0.5" size={20} />
-            <p className="text-sm text-danger">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
+            <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
               required
-              className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               placeholder="seu@email.com"
             />
           </div>
 
-          {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Senha
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Senha</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
               required
-              className="w-full px-4 py-2 border border-input rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               placeholder="••••••••"
             />
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-4 py-2 bg-secondary text-white font-medium rounded-lg hover:bg-secondary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-6"
+            className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
-        {/* Footer */}
-        <div className="mt-6 pt-6 border-t border-border text-center">
-          <p className="text-sm text-muted-foreground">
-            Não tem conta?{' '}
-            <button
-              onClick={() => navigate('/signup')}
-              className="text-secondary hover:underline font-medium"
-            >
-              Criar conta
-            </button>
-          </p>
-        </div>
-
-        {/* Demo Info */}
-        <div className="mt-6 p-4 bg-info/10 border border-info/20 rounded-lg">
-          <p className="text-xs text-info font-medium mb-2">Credenciais de Demonstração:</p>
-          <p className="text-xs text-muted-foreground">
-            Use as credenciais fornecidas pelo administrador do sistema para acessar.
-          </p>
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+          <p className="text-xs text-blue-700 font-medium mb-1">Acesso Restrito</p>
+          <p className="text-xs text-blue-600">Use as credenciais fornecidas pelo administrador do sistema.</p>
         </div>
       </div>
     </div>
