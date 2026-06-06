@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MainLayout } from './components/Layout/MainLayout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { UnidadesPage } from './pages/UnidadesPage';
 import './styles/globals.css';
 
 // Criar instância do QueryClient
@@ -62,6 +63,7 @@ const AppContent: React.FC = () => {
         }
       >
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="unidades" element={<UnidadesPage />} />
       </Route>
 
       {/* 404 - Rota não encontrada */}
