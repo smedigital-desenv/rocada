@@ -86,12 +86,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       setError(null);
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) throw error;
+
+      // Buscar perfil imediatamente após login
+      if (data.user) {
+        const { data: perfil } = await supabase
+          .from('perfis')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (perfil) {
+          setUsuario({
+            id: data.user.id,
+            email: data.user.email || '',
+            nome: perfil.nome,
+            perfil: perfil.perfil as UserProfile,
+            ativo: perfil.ativo,
+          });
+        }
+      }
     } catch (err: any) {
-      const mensagem =
-        err?.message || 'Erro ao fazer login. Verifique suas credenciais.';
+      const mensagem = err?.message || 'Erro ao fazer login. Verifique suas credenciais.';
       setError(mensagem);
       throw err;
     }
