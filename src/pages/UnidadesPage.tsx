@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle, Clock, Building2 } from 'lucide-react';
-import { useUnidades, useRegioes } from '../hooks/useQueries';
+import { useUnidades, useRegioes, useCriarUnidade } from '../hooks/useQueries';
 import { SituacaoOperacional } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,6 +25,9 @@ export const UnidadesPage: React.FC = () => {
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState('');
   const [showFiltros, setShowFiltros] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [formData, setFormData] = useState({ codigo_unidade: '', nome: '', regiao_id: '' });
+  const [erro, setErro] = useState('');
 
   const { data: unidades, isLoading } = useUnidades({
     search,
@@ -33,10 +36,110 @@ export const UnidadesPage: React.FC = () => {
   });
 
   const { data: regioes } = useRegioes();
+  const criarUnidade = useCriarUnidade();
+
+  const handleCriar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro('');
+    try {
+      if (!formData.codigo_unidade || !formData.nome || !formData.regiao_id) {
+        setErro('Preencha todos os campos');
+        return;
+      }
+      await criarUnidade.mutateAsync(formData);
+      setModalOpen(false);
+      setFormData({ codigo_unidade: '', nome: '', regiao_id: '' });
+    } catch (err: any) {
+      setErro(err.message || 'Erro ao criar unidade');
+    }
+  };
+
+  // Modal aberto
+  if (modalOpen) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
+        </div>
+
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Nova Unidade Escolar</h2>
+
+            {erro && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {erro}
+              </div>
+            )}
+
+            <form onSubmit={handleCriar} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Código <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.codigo_unidade}
+                  onChange={(e) => setFormData({ ...formData, codigo_unidade: e.target.value })}
+                  placeholder="Ex: ESC001"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  placeholder="Nome da unidade"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Região <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.regiao_id}
+                  onChange={(e) => setFormData({ ...formData, regiao_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Selecione...</option>
+                  {regioes?.map((r) => (
+                    <option key={r.id} value={r.id}>{r.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setModalOpen(false); setErro(''); }}
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={criarUnidade.isPending}
+                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {criarUnidade.isPending ? 'Criando...' : 'Criar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
@@ -45,17 +148,18 @@ export const UnidadesPage: React.FC = () => {
           </p>
         </div>
         {isSME && (
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+          <button 
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
             <Plus size={16} />
             Nova Unidade
           </button>
         )}
       </div>
 
-      {/* Busca e Filtros */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex gap-3">
-          {/* Busca */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
@@ -67,7 +171,6 @@ export const UnidadesPage: React.FC = () => {
             />
           </div>
 
-          {/* Botão Filtros */}
           <button
             onClick={() => setShowFiltros(!showFiltros)}
             className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
@@ -82,10 +185,8 @@ export const UnidadesPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Painel de Filtros */}
         {showFiltros && (
           <div className="mt-4 pt-4 border-t border-gray-100 flex gap-4">
-            {/* Região */}
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Região</label>
               <select
@@ -100,7 +201,6 @@ export const UnidadesPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Situação */}
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Situação</label>
               <select
@@ -116,7 +216,6 @@ export const UnidadesPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Limpar */}
             <div className="flex items-end">
               <button
                 onClick={() => { setRegiaoFiltro(''); setSituacaoFiltro(''); }}
@@ -129,7 +228,6 @@ export const UnidadesPage: React.FC = () => {
         )}
       </div>
 
-      {/* Lista de Unidades */}
       {isLoading ? (
         <div className="flex items-center justify-center h-48">
           <div className="flex flex-col items-center gap-3">
