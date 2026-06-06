@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, Clock, Building2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useRocadasPendentes, useValidarRocada } from '../hooks/useQueries';
 
 export const ValidarRocadasPage: React.FC = () => {
