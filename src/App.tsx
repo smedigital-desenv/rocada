@@ -64,6 +64,7 @@ const AppContent: React.FC = () => {
       >
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="unidades" element={<UnidadesPage />} />
+        <Route path="Relatorios" element={<Relatoriospage />} />
       </Route>
 
       {/* 404 - Rota não encontrada */}
