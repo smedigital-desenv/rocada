@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Users, Settings, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, Users, Settings, CheckCircle, Trash2, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -7,7 +7,7 @@ export const ConfiguracoesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [aba, setAba] = useState<'usuarios' | 'sistema'>('usuarios');
   const [modalAberto, setModalAberto] = useState(false);
-  const [formData, setFormData] = useState({ email: '', senha: '', nome: '', perfil: 'EMPRESA' });
+  const [formData, setFormData] = useState({ email: '', nome: '', perfil: 'EMPRESA' });
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
@@ -17,40 +17,44 @@ export const ConfiguracoesPage: React.FC = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('perfis')
-        .select('id, user_id, nome, perfil, ativo, created_at')
+        .select('id, user_id, nome, email, perfil, ativo, created_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
     },
   });
 
-  // Criar usuário
-  const criarUsuario = useMutation({
+  // Criar perfil
+  const criarPerfil = useMutation({
     mutationFn: async () => {
-      if (!formData.email || !formData.senha || !formData.nome) {
-        throw new Error('Preencha todos os campos');
+      if (!formData.email || !formData.nome) {
+        throw new Error('Preencha Nome e Email');
       }
 
-      const { data, error } = await supabase.rpc('criar_usuario', {
-        email: formData.email,
-        senha: formData.senha,
-        nome: formData.nome,
-        perfil: formData.perfil,
-      });
+      const { data, error } = await supabase
+        .from('perfis')
+        .insert([{
+          user_id: '00000000-0000-0000-0000-000000000000',
+          nome: formData.nome,
+          email: formData.email,
+          perfil: formData.perfil,
+          ativo: false,
+        }])
+        .select()
+        .single();
 
-      if (error) throw new Error(error.message);
-      if (!data.success) throw new Error(data.error);
+      if (error) throw error;
       return data;
     },
     onSuccess: () => {
-      setSucesso('Usuário criado com sucesso!');
-      setFormData({ email: '', senha: '', nome: '', perfil: 'EMPRESA' });
+      setSucesso('Perfil criado! Agora crie o usuário no Supabase Auth.');
+      setFormData({ email: '', nome: '', perfil: 'EMPRESA' });
       setModalAberto(false);
-      setTimeout(() => setSucesso(''), 3000);
+      setTimeout(() => setSucesso(''), 5000);
       queryClient.invalidateQueries({ queryKey: ['usuarios'] });
     },
     onError: (err: any) => {
-      setErro(err.message || 'Erro ao criar usuário');
+      setErro(err.message || 'Erro ao criar perfil');
     },
   });
 
@@ -133,6 +137,7 @@ export const ConfiguracoesPage: React.FC = () => {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Nome</th>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Email</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Perfil</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data Criação</th>
@@ -145,6 +150,9 @@ export const ConfiguracoesPage: React.FC = () => {
                       <td className="px-6 py-4">
                         <p className="text-sm font-medium text-gray-900">{user.nome}</p>
                       </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {user.email || '-'}
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                           user.perfil === 'SME'
@@ -155,13 +163,16 @@ export const ConfiguracoesPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                          user.ativo
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {user.ativo ? 'Ativo' : 'Inativo'}
-                        </span>
+                        {user.ativo ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                            Ativo
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 flex items-center gap-1">
+                            <AlertCircle size={12} />
+                            Pendente
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         {new Date(user.created_at).toLocaleDateString('pt-BR')}
@@ -206,7 +217,7 @@ export const ConfiguracoesPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={(e) => { e.preventDefault(); criarUsuario.mutate(); }} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); criarPerfil.mutate(); }} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nome <span className="text-red-500">*</span>
@@ -235,19 +246,6 @@ export const ConfiguracoesPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Senha <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={formData.senha}
-                  onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Perfil <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -260,6 +258,10 @@ export const ConfiguracoesPage: React.FC = () => {
                 </select>
               </div>
 
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                <strong>Próximo passo:</strong> Crie o usuário no Supabase Auth com o mesmo email.
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -270,10 +272,10 @@ export const ConfiguracoesPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={criarUsuario.isPending}
+                  disabled={criarPerfil.isPending}
                   className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {criarUsuario.isPending ? 'Criando...' : 'Criar'}
+                  {criarPerfil.isPending ? 'Criando...' : 'Criar'}
                 </button>
               </div>
             </form>
