@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { Filter, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
+import { Search, Filter } from 'lucide-react';
 import { useRegioes } from '../hooks/useQueries';
+import { supabase } from '../lib/supabase';
+import { useQuery } from '@tanstack/react-query';
 
-const statusConfig = {
-  PENDENTE: { label: 'Pendente', color: 'bg-amber-100 text-amber-700', icon: Clock },
-  APROVADA: { label: 'Aprovada', color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-  REJEITADA: { label: 'Rejeitada', color: 'bg-red-100 text-red-700', icon: XCircle },
+const statusConfig: Record<string, { label: string; color: string }> = {
+  PENDENTE: { label: 'Pendente', color: 'bg-amber-100 text-amber-700' },
+  APROVADA: { label: 'Aprovada', color: 'bg-emerald-100 text-emerald-700' },
+  REJEITADA: { label: 'Rejeitada', color: 'bg-red-100 text-red-700' },
 };
 
 export const HistoricoPage: React.FC = () => {
-  const [statusFiltro, setStatusFiltro] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [showFiltros, setShowFiltros] = useState(false);
@@ -20,7 +20,7 @@ export const HistoricoPage: React.FC = () => {
   const { data: regioes } = useRegioes();
 
   const { data: rocadas, isLoading } = useQuery({
-    queryKey: ['historico', statusFiltro, regiaoFiltro, dataInicio, dataFim],
+    queryKey: ['historico', regiaoFiltro, statusFiltro, dataInicio, dataFim],
     queryFn: async () => {
       let query = supabase
         .from('rocadas')
@@ -35,39 +35,36 @@ export const HistoricoPage: React.FC = () => {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Filtrar por região no frontend
       if (regiaoFiltro) {
         return data?.filter((r: any) => r.unidades?.regiao_id === regiaoFiltro);
       }
-
       return data;
     },
   });
 
-  const temFiltro = statusFiltro || regiaoFiltro || dataInicio || dataFim;
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Histórico de Roçadas</h1>
-          <p className="text-gray-500 text-sm mt-1">{rocadas?.length || 0} registros encontrados</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Histórico de Roçadas</h1>
+        <p className="text-gray-500 text-sm mt-1">{rocadas?.length || 0} registros encontrados</p>
       </div>
 
       {/* Filtros */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <button
-          onClick={() => setShowFiltros(!showFiltros)}
-          className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-            showFiltros ? 'text-blue-600' : 'text-gray-600'
-          }`}
-        >
-          <Filter size={16} />
-          Filtros
-          {temFiltro && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowFiltros(!showFiltros)}
+            className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+              showFiltros ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Filter size={16} />
+            Filtros
+            {(regiaoFiltro || statusFiltro || dataInicio || dataFim) && (
+              <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+            )}
+          </button>
+        </div>
 
         {showFiltros && (
           <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -113,16 +110,6 @@ export const HistoricoPage: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            {temFiltro && (
-              <div className="col-span-full flex justify-end">
-                <button
-                  onClick={() => { setStatusFiltro(''); setRegiaoFiltro(''); setDataInicio(''); setDataFim(''); }}
-                  className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Limpar filtros
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -132,10 +119,6 @@ export const HistoricoPage: React.FC = () => {
         <div className="flex items-center justify-center h-48">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
-      ) : rocadas?.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <p className="text-gray-500">Nenhum registro encontrado</p>
-        </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full">
@@ -143,39 +126,49 @@ export const HistoricoPage: React.FC = () => {
               <tr>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unidade</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Região</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Execução</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Registro</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Executada</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Registrada</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Observação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rocadas?.map((rocada: any) => {
-                const config = statusConfig[rocada.status_validacao as keyof typeof statusConfig];
-                const Icon = config.icon;
-                return (
-                  <tr key={rocada.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-gray-900">{rocada.unidades?.nome || '-'}</p>
-                      <p className="text-xs text-gray-500">{rocada.unidades?.codigo_unidade || '-'}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {rocada.unidades?.regioes?.nome || '-'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(rocada.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(rocada.data_registro).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
-                        <Icon size={12} />
-                        {config.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+              {rocadas?.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    Nenhum registro encontrado
+                  </td>
+                </tr>
+              ) : (
+                rocadas?.map((r: any) => {
+                  const status = statusConfig[r.status_validacao];
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-gray-900">{r.unidades?.nome}</p>
+                        <p className="text-xs text-gray-400">{r.unidades?.codigo_unidade}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {r.unidades?.regioes?.nome || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {new Date(r.data_registro).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status?.color}`}>
+                          {status?.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                        {r.observacao_sme || r.observacao_empresa || '-'}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
