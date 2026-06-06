@@ -316,3 +316,25 @@ export const useValidarRocada = () => {
     },
   });
 };
+
+// ============================================
+// MUTATIONS - UNIDADES
+// ============================================
+
+export const useCriarUnidade = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { codigo_unidade: string; nome: string; regiao_id: string }) => {
+      const { data: unidade, error } = await supabase
+        .from('unidades')
+        .insert([data])
+        .select()
+        .single();
+      if (error) throw error;
+      return unidade;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['unidades'] });
+    },
+  });
+};
