@@ -9,6 +9,7 @@ import { UnidadesPage } from './pages/UnidadesPage';
 import { RegistrarRocadaPage } from './pages/RegistrarRocadaPage';
 import { ValidarRocadasPage } from './pages/ValidarRocadasPage';
 import { HistoricoPage } from './pages/HistoricoPage';
+import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -78,6 +79,9 @@ const AppContent: React.FC = () => {
           <SMERoute><ValidarRocadasPage /></SMERoute>
         } />
         <Route path="historico" element={<HistoricoPage />} />
+        <Route path="configuracoes" element={
+          <SMERoute><ConfiguracoesPage /></SMERoute>
+        } />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
