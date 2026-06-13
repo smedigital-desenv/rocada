@@ -10,6 +10,7 @@ import { RegistrarRocadaPage } from './pages/RegistrarRocadaPage';
 import { ValidarRocadasPage } from './pages/ValidarRocadasPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
+import { RelatoriosPage } from './pages/RelatoriosPage';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -24,7 +25,6 @@ const queryClient = new QueryClient({
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -35,7 +35,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       </div>
     );
   }
-
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
@@ -54,7 +53,6 @@ const EmpresaRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const AppContent: React.FC = () => {
   const { isAuthenticated } = useAuth();
-
   return (
     <Routes>
       <Route
@@ -79,6 +77,9 @@ const AppContent: React.FC = () => {
           <SMERoute><ValidarRocadasPage /></SMERoute>
         } />
         <Route path="historico" element={<HistoricoPage />} />
+        <Route path="relatorios" element={
+          <SMERoute><RelatoriosPage /></SMERoute>
+        } />
         <Route path="configuracoes" element={
           <SMERoute><ConfiguracoesPage /></SMERoute>
         } />
