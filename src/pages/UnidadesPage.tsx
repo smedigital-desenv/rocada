@@ -125,10 +125,9 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
     setErroEdicao('');
     try {
       await editarRocada.mutateAsync({
-        id: editandoId!,
-        unidade_id: unidade.id,
-        data_execucao: editForm.data_execucao,
-        observacao_empresa: editForm.observacao_empresa,
+  id: editandoId!,
+  data_execucao: editForm.data_execucao,
+  observacao_empresa: editForm.observacao_empresa,
       });
       setEditandoId(null);
     } catch (err: any) {
