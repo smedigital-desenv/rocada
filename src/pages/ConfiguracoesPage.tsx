@@ -80,9 +80,9 @@ useEffect(() => {
     setTimeout(() => setSucesso(false), 3000);
   };
 
-  const p = parseInt(prazo) || 60;
-  const tA = parseInt(tolAntes) || 7;
-  const tD = parseInt(tolDepois) || 7;
+const p  = parseInt(prazo)     || 60;
+const tA = isNaN(parseInt(tolAntes))  ? 0 : parseInt(tolAntes);
+const tD = isNaN(parseInt(tolDepois)) ? 0 : parseInt(tolDepois);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
