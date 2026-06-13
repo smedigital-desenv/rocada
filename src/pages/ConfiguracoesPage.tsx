@@ -56,33 +56,33 @@ const useSalvarConfiguracoes = () => {
 // SEÇÃO: PRAZOS
 // ============================================================
 const SecaoPrazos: React.FC<{ configs: any }> = ({ configs }) => {
-  const [prazo, setPrazo] = useState('60');
-  const [tolAntes, setTolAntes] = useState('7');
-  const [tolDepois, setTolDepois] = useState('7');
+  const [prazo, setPrazo] = useState<number>(60);
+  const [tolAntes, setTolAntes] = useState<number>(7);
+  const [tolDepois, setTolDepois] = useState<number>(7);
   const [sucesso, setSucesso] = useState(false);
   const salvar = useSalvarConfiguracoes();
 
-useEffect(() => {
-  if (configs) {
-    setPrazo(String(configs.prazo_dias ?? 60));
-    setTolAntes(String(configs.tolerancia_antes ?? 7));
-    setTolDepois(String(configs.tolerancia_depois ?? 7));
-  }
-}, [configs]);
+  useEffect(() => {
+    if (configs) {
+      setPrazo(configs.prazo_dias ?? 60);
+      setTolAntes(configs.tolerancia_antes ?? 7);
+      setTolDepois(configs.tolerancia_depois ?? 7);
+    }
+  }, [configs]);
 
   const handleSalvar = async () => {
     await salvar.mutateAsync({
-      prazo_dias: parseInt(prazo),
-      tolerancia_antes: parseInt(tolAntes),
-      tolerancia_depois: parseInt(tolDepois),
+      prazo_dias: prazo,
+      tolerancia_antes: tolAntes,
+      tolerancia_depois: tolDepois,
     });
     setSucesso(true);
     setTimeout(() => setSucesso(false), 3000);
   };
 
-const p  = parseInt(prazo)     || 60;
-const tA = isNaN(parseInt(tolAntes))  ? 0 : parseInt(tolAntes);
-const tD = isNaN(parseInt(tolDepois)) ? 0 : parseInt(tolDepois);
+  const p  = prazo || 60;
+  const tA = tolAntes;
+  const tD = tolDepois;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -95,27 +95,26 @@ const tD = isNaN(parseInt(tolDepois)) ? 0 : parseInt(tolDepois);
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Prazo entre roçadas (dias)</label>
           <input type="number" min="1" max="365" value={prazo}
-            onChange={(e) => setPrazo(e.target.value)}
+            onChange={(e) => setPrazo(e.target.value === '' ? 60 : Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Tolerância antes (dias)</label>
           <input type="number" min="0" max="30" value={tolAntes}
-            onChange={(e) => setTolAntes(e.target.value)}
+            onChange={(e) => setTolAntes(e.target.value === '' ? 0 : Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Tolerância depois (dias)</label>
           <input type="number" min="0" max="30" value={tolDepois}
-            onChange={(e) => setTolDepois(e.target.value)}
+            onChange={(e) => setTolDepois(e.target.value === '' ? 0 : Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
 
-      {/* Preview das faixas */}
       <div className="p-3 bg-gray-50 rounded-lg text-xs space-y-1.5">
         <p className="font-medium text-gray-600 mb-2">Preview das situações com os valores acima:</p>
         <div className="flex items-center gap-2">
