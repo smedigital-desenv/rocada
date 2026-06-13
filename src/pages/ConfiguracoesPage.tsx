@@ -389,11 +389,11 @@ const SecaoRegioes: React.FC = () => {
             <div key={regiao.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
               {editando?.id === regiao.id ? (
                 <div className="flex items-center gap-2 flex-1">
-                  <input type="text" value={editando.nome} autoFocus
-                    onChange={(e) => setEditando({ ...editando, nome: e.target.value })}
-                    onKeyDown={(e) => e.key === 'Enter' && editarRegiao.mutate({ id: editando.id, nome: editando.nome })}
+                  <input type="text" value={editando!.nome} autoFocus
+                    onChange={(e) => setEditando(prev => prev ? { ...prev, nome: e.target.value } : null)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && editando) editarRegiao.mutate({ id: editando.id, nome: editando.nome }); }}
                     className="flex-1 px-2 py-1 border border-blue-400 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <button onClick={() => editarRegiao.mutate({ id: editando.id, nome: editando.nome })} className="text-blue-600 hover:text-blue-700"><CheckCircle size={16} /></button>
+                  <button onClick={() => { if (editando) editarRegiao.mutate({ id: editando.id, nome: editando.nome }); }} className="text-blue-600 hover:text-blue-700"><CheckCircle size={16} /></button>
                   <button onClick={() => setEditando(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
                 </div>
               ) : (
