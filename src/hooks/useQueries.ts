@@ -312,7 +312,13 @@ export const useCriarRocada = () => {
         status_validacao: 'PENDENTE',
       });
 
-      if (error) throw error;
+      if (error) {
+        // Traduz erro de duplicata do banco para mensagem amigável
+        if (error.code === '23505' || error.message.includes('rocadas_unidade_data_unico')) {
+          throw new Error('Já existe uma roçada registrada nesta unidade nesta data.');
+        }
+        throw error;
+      }
 
       // Marca a unidade como aguardando validação da SME
       await supabase
