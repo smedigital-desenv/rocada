@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
   Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle,
-  Clock, Building2, X, History, CalendarPlus
+  Clock, Building2, X, History, CalendarPlus, Pencil, Trash2, AlertOctagon
 } from 'lucide-react';
-import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada } from '../hooks/useQueries';
+import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada, useEditarRocada, useDeletarRocada } from '../hooks/useQueries';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
@@ -81,11 +81,24 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
+  // Estado para edição inline
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ data_execucao: '', observacao_empresa: '' });
+  const [erroEdicao, setErroEdicao] = useState('');
+
+  // Estado para confirmação de exclusão
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
+
   const { data: rocadas, isLoading } = useRocadasUnidade(unidade.id);
   const criarRocada = useCriarRocada();
+  const editarRocada = useEditarRocada();
+  const deletarRocada = useDeletarRocada();
 
   const config = situacaoConfig[unidade._situacao] || situacaoConfig.EM_DIA;
   const Icon = config.icon;
+
+  // Verificar se há roçada aguardando validação
+  const rocadaPendente = rocadas?.find((r) => r.status_validacao === 'PENDENTE');
 
   const handleRegistrar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,13 +110,38 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
         data_execucao: dataExecucao,
         observacao_empresa: observacao,
       });
-      setSucesso('Roçada registrada! Aguardando validação da SME.');
+      setSucesso('Roçada registrada com sucesso!');
       setDataExecucao('');
       setObservacao('');
       setAba('historico');
-      setTimeout(() => setSucesso(''), 4000);
+      setTimeout(() => setSucesso(''), 5000);
     } catch (err: any) {
       setErro(err.message || 'Erro ao registrar roçada');
+    }
+  };
+
+  const handleEditar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroEdicao('');
+    try {
+      await editarRocada.mutateAsync({
+        id: editandoId!,
+        unidade_id: unidade.id,
+        data_execucao: editForm.data_execucao,
+        observacao_empresa: editForm.observacao_empresa,
+      });
+      setEditandoId(null);
+    } catch (err: any) {
+      setErroEdicao(err.message || 'Erro ao editar roçada');
+    }
+  };
+
+  const handleDeletar = async (id: string) => {
+    try {
+      await deletarRocada.mutateAsync({ id, unidade_id: unidade.id });
+      setDeletandoId(null);
+    } catch (err: any) {
+      setErro(err.message || 'Erro ao excluir roçada');
     }
   };
 
@@ -161,9 +199,31 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
         )}
 
         <div className="flex-1 overflow-y-auto">
+
+          {/* Banner de roçada aguardando validação */}
+          {rocadaPendente && aba === 'historico' && (
+            <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-700">
+              <AlertOctagon size={16} className="shrink-0" />
+              <span>
+                <strong>Aguardando validação da SME</strong> — roçada de{' '}
+                {new Date(rocadaPendente.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')} ainda não foi validada.
+                {isEmpresa && ' Você pode editar ou excluir enquanto aguarda.'}
+              </span>
+            </div>
+          )}
+
+          {/* Mensagem de sucesso */}
           {sucesso && (
             <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-sm text-emerald-700">
               <CheckCircle size={16} />{sucesso}
+            </div>
+          )}
+
+          {/* Erro geral */}
+          {erro && (
+            <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
+              <X size={16} />{erro}
+              <button onClick={() => setErro('')} className="ml-auto"><X size={14} /></button>
             </div>
           )}
 
@@ -179,42 +239,145 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                 <p className="text-sm">Nenhuma roçada registrada ainda</p>
               </div>
             ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    {['Data Execução','Registrada','Status','Observação'].map(h => (
-                      <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {rocadas.map((r) => {
-                    const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
-                    return (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm text-gray-700">
-                          {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-gray-500">
-                          {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
-                        </td>
-                        <td className="px-6 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
-                        </td>
-                        <td className="px-6 py-3 text-sm text-gray-500">
-                          {r.observacao_empresa || r.observacao_sme || '-'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="overflow-y-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-100 sticky top-0">
+                    <tr>
+                      {['Data Execução','Registrada','Status','Observação', ...(isEmpresa ? [''] : [])].map(h => (
+                        <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rocadas.map((r) => {
+                      const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
+                      const isPendente = r.status_validacao === 'PENDENTE';
+
+                      // Linha em modo edição
+                      if (editandoId === r.id) {
+                        return (
+                          <tr key={r.id} className="bg-blue-50">
+                            <td colSpan={isEmpresa ? 5 : 4} className="px-6 py-3">
+                              <form onSubmit={handleEditar} className="space-y-2">
+                                {erroEdicao && (
+                                  <p className="text-xs text-red-600">{erroEdicao}</p>
+                                )}
+                                <div className="flex gap-2 items-end">
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Data de Execução</label>
+                                    <input type="date" value={editForm.data_execucao}
+                                      max={new Date().toISOString().split('T')[0]}
+                                      onChange={(e) => setEditForm({ ...editForm, data_execucao: e.target.value })}
+                                      className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className="block text-xs text-gray-600 mb-1">Observação</label>
+                                    <input type="text" value={editForm.observacao_empresa}
+                                      onChange={(e) => setEditForm({ ...editForm, observacao_empresa: e.target.value })}
+                                      placeholder="Observação opcional..."
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                  </div>
+                                  <button type="submit" disabled={editarRocada.isPending}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                                    {editarRocada.isPending ? 'Salvando...' : 'Salvar'}
+                                  </button>
+                                  <button type="button" onClick={() => { setEditandoId(null); setErroEdicao(''); }}
+                                    className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50">
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </form>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      // Linha de confirmação de exclusão
+                      if (deletandoId === r.id) {
+                        return (
+                          <tr key={r.id} className="bg-red-50">
+                            <td colSpan={isEmpresa ? 5 : 4} className="px-6 py-3">
+                              <div className="flex items-center gap-3">
+                                <Trash2 size={16} className="text-red-600" />
+                                <span className="text-sm text-red-700 flex-1">
+                                  Excluir roçada de <strong>{new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>?
+                                </span>
+                                <button onClick={() => handleDeletar(r.id)}
+                                  disabled={deletarRocada.isPending}
+                                  className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                                  {deletarRocada.isPending ? 'Excluindo...' : 'Confirmar'}
+                                </button>
+                                <button onClick={() => setDeletandoId(null)}
+                                  className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={r.id} className={`hover:bg-gray-50 ${isPendente ? 'bg-amber-50/30' : ''}`}>
+                          <td className="px-6 py-3 text-sm text-gray-700">
+                            {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                          </td>
+                          <td className="px-6 py-3 text-sm text-gray-500">
+                            {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
+                              {r.status_validacao === 'PENDENTE' ? '⏳ Aguardando Validação' : st.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 text-sm text-gray-500">
+                            {r.observacao_empresa || r.observacao_sme || '-'}
+                          </td>
+                          {isEmpresa && (
+                            <td className="px-6 py-3">
+                              {isPendente && (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setEditandoId(r.id);
+                                      setEditForm({
+                                        data_execucao: r.data_execucao,
+                                        observacao_empresa: r.observacao_empresa || '',
+                                      });
+                                      setErroEdicao('');
+                                    }}
+                                    className="text-blue-500 hover:text-blue-700 transition-colors"
+                                    title="Editar">
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletandoId(r.id)}
+                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                    title="Excluir">
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )
           )}
 
           {/* Aba Registrar */}
           {aba === 'registrar' && isEmpresa && (
             <form onSubmit={handleRegistrar} className="p-6 space-y-4">
+              {rocadaPendente && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-700">
+                  <AlertOctagon size={15} />
+                  Já existe uma roçada de <strong>{new Date(rocadaPendente.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}</strong> aguardando validação.
+                </div>
+              )}
               {erro && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
