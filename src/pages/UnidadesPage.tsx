@@ -4,14 +4,46 @@ import {
   Clock, Building2, X, History, CalendarPlus
 } from 'lucide-react';
 import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada } from '../hooks/useQueries';
-import { SituacaoOperacional } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../lib/supabase';
 
-const situacaoConfig = {
-  EM_DIA:       { label: 'Em Dia',        color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-  ATENCAO:      { label: 'Atenção',       color: 'bg-amber-100 text-amber-700',     icon: AlertTriangle },
-  CRITICO:      { label: 'Crítico',       color: 'bg-red-100 text-red-700',         icon: AlertCircle },
-  PENDENCIA_SME:{ label: 'Pendência SME', color: 'bg-blue-100 text-blue-700',       icon: Clock },
+// ============================================================
+// CALCULAR SITUAÇÃO DINAMICAMENTE
+// ============================================================
+const calcularSituacao = (
+  ultima_rocada: string | null,
+  statusBanco: string,
+  prazo: number,
+  tolAntes: number,
+  tolDepois: number
+): string => {
+  // Manter PENDENCIA_SME se estiver aguardando validação
+  if (statusBanco === 'PENDENCIA_SME') return 'PENDENCIA_SME';
+  if (!ultima_rocada) return 'EM_DIA';
+
+  const dias = Math.floor(
+    (Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (dias > prazo + tolDepois) return 'CRITICO';
+  if (dias > prazo - tolAntes)  return 'ATENCAO';
+  return 'EM_DIA';
+};
+
+const calcularDias = (ultima_rocada?: string) => {
+  if (!ultima_rocada) return null;
+  return Math.floor((Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24));
+};
+
+// ============================================================
+// CONFIG DE SITUAÇÃO
+// ============================================================
+const situacaoConfig: Record<string, { label: string; color: string; icon: any }> = {
+  EM_DIA:        { label: 'Em Dia',        color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  ATENCAO:       { label: 'Atenção',       color: 'bg-amber-100 text-amber-700',     icon: AlertTriangle },
+  CRITICO:       { label: 'Crítico',       color: 'bg-red-100 text-red-700',         icon: AlertCircle },
+  PENDENCIA_SME: { label: 'Pendência SME', color: 'bg-blue-100 text-blue-700',       icon: Clock },
 };
 
 const statusRocadaConfig: Record<string, { label: string; color: string }> = {
@@ -20,13 +52,9 @@ const statusRocadaConfig: Record<string, { label: string; color: string }> = {
   REJEITADA: { label: 'Rejeitada', color: 'bg-red-100 text-red-700' },
 };
 
-const calcularDias = (ultima_rocada?: string) => {
-  if (!ultima_rocada) return null;
-  const diff = Math.floor((Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
-};
-
-// ── Modal de detalhe da unidade ──────────────────────────────────────────────
+// ============================================================
+// MODAL DE DETALHE DA UNIDADE
+// ============================================================
 const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade, onClose }) => {
   const { isEmpresa } = useAuth();
   const [aba, setAba] = useState<'historico' | 'registrar'>('historico');
@@ -38,7 +66,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
   const { data: rocadas, isLoading } = useRocadasUnidade(unidade.id);
   const criarRocada = useCriarRocada();
 
-  const config = situacaoConfig[unidade.situacao_operacional as SituacaoOperacional] || situacaoConfig.EM_DIA;
+  const config = situacaoConfig[unidade._situacao] || situacaoConfig.EM_DIA;
   const Icon = config.icon;
 
   const handleRegistrar = async (e: React.FormEvent) => {
@@ -65,7 +93,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 
-        {/* Cabeçalho do modal */}
+        {/* Cabeçalho */}
         <div className="flex items-start justify-between p-6 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{unidade.nome}</h2>
@@ -83,8 +111,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">Situação</p>
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
-              <Icon size={11} />
-              {config.label}
+              <Icon size={11} />{config.label}
             </span>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
@@ -101,134 +128,96 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
           </div>
         </div>
 
-        {/* Abas (só para EMPRESA) */}
+        {/* Abas (só EMPRESA) */}
         {isEmpresa && (
           <div className="flex border-b border-gray-100 px-6">
-            <button
-              onClick={() => setAba('historico')}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                aba === 'historico' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
+            <button onClick={() => setAba('historico')}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${aba === 'historico' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               <History size={15} /> Histórico
             </button>
-            <button
-              onClick={() => setAba('registrar')}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                aba === 'registrar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
+            <button onClick={() => setAba('registrar')}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${aba === 'registrar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               <CalendarPlus size={15} /> Registrar Roçada
             </button>
           </div>
         )}
 
-        {/* Conteúdo rolável */}
         <div className="flex-1 overflow-y-auto">
-
-          {/* Mensagem de sucesso */}
           {sucesso && (
             <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle size={16} />
-              {sucesso}
+              <CheckCircle size={16} />{sucesso}
             </div>
           )}
 
           {/* Aba Histórico */}
           {aba === 'historico' && (
-            <>
-              {isLoading ? (
-                <div className="flex items-center justify-center h-32">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                </div>
-              ) : !rocadas?.length ? (
-                <div className="flex flex-col items-center justify-center h-32 text-gray-400">
-                  <History size={28} className="mb-2 opacity-30" />
-                  <p className="text-sm">Nenhuma roçada registrada ainda</p>
-                </div>
-              ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-100">
-                    <tr>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data Execução</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Registrada</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Observação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {rocadas.map((r) => {
-                      const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
-                      return (
-                        <tr key={r.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-3 text-sm text-gray-700">
-                            {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                          </td>
-                          <td className="px-6 py-3 text-sm text-gray-500">
-                            {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
-                          </td>
-                          <td className="px-6 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
-                              {st.label}
-                            </span>
-                          </td>
-                          <td className="px-6 py-3 text-sm text-gray-500">
-                            {r.observacao_empresa || r.observacao_sme || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </>
+            isLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            ) : !rocadas?.length ? (
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                <History size={28} className="mb-2 opacity-30" />
+                <p className="text-sm">Nenhuma roçada registrada ainda</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['Data Execução','Registrada','Status','Observação'].map(h => (
+                      <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rocadas.map((r) => {
+                    const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm text-gray-700">
+                          {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-gray-500">
+                          {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
+                        </td>
+                        <td className="px-6 py-3 text-sm text-gray-500">
+                          {r.observacao_empresa || r.observacao_sme || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
           )}
 
-          {/* Aba Registrar Roçada (só EMPRESA) */}
+          {/* Aba Registrar */}
           {aba === 'registrar' && isEmpresa && (
             <form onSubmit={handleRegistrar} className="p-6 space-y-4">
-              {erro && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  {erro}
-                </div>
-              )}
+              {erro && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Data de Execução <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={dataExecucao}
+                <input type="date" value={dataExecucao}
                   max={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setDataExecucao(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Observação (opcional)
-                </label>
-                <textarea
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  rows={3}
-                  placeholder="Alguma observação sobre a roçada realizada..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observação (opcional)</label>
+                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)}
+                  rows={3} placeholder="Alguma observação sobre a roçada realizada..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
               <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAba('historico')}
-                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={criarRocada.isPending}
-                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
+                <button type="button" onClick={() => setAba('historico')}
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={criarRocada.isPending}
+                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                   {criarRocada.isPending ? 'Registrando...' : 'Registrar Roçada'}
                 </button>
               </div>
@@ -240,7 +229,9 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
   );
 };
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ============================================================
+// PÁGINA PRINCIPAL
+// ============================================================
 export const UnidadesPage: React.FC = () => {
   const { isSME } = useAuth();
   const [search, setSearch] = useState('');
@@ -252,13 +243,32 @@ export const UnidadesPage: React.FC = () => {
   const [formData, setFormData] = useState({ codigo_unidade: '', nome: '', regiao_id: '' });
   const [erro, setErro] = useState('');
 
-  const { data: unidades, isLoading } = useUnidades({
-    search,
-    regiao_id: regiaoFiltro || undefined,
-    situacao: (situacaoFiltro as SituacaoOperacional) || undefined,
+  // Buscar configurações de prazo
+  const { data: configsPrazo } = useQuery({
+    queryKey: ['configuracoes'],
+    queryFn: async () => {
+      const { data } = await supabase.from('configuracoes').select('prazo_dias, tolerancia_antes, tolerancia_depois').single();
+      return data || { prazo_dias: 60, tolerancia_antes: 7, tolerancia_depois: 7 };
+    },
   });
+
+  const prazo     = configsPrazo?.prazo_dias        ?? 60;
+  const tolAntes  = configsPrazo?.tolerancia_antes  ?? 7;
+  const tolDepois = configsPrazo?.tolerancia_depois ?? 7;
+
+  const { data: unidades, isLoading } = useUnidades({ search, regiao_id: regiaoFiltro || undefined });
   const { data: regioes } = useRegioes();
   const criarUnidade = useCriarUnidade();
+
+  // Calcular situação dinamicamente e aplicar filtro
+  const unidadesComSituacao = (unidades || []).map((u) => ({
+    ...u,
+    _situacao: calcularSituacao(u.ultima_rocada, u.situacao_operacional, prazo, tolAntes, tolDepois),
+  }));
+
+  const unidadesFiltradas = situacaoFiltro
+    ? unidadesComSituacao.filter((u) => u._situacao === situacaoFiltro)
+    : unidadesComSituacao;
 
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,13 +290,11 @@ export const UnidadesPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
-          <p className="text-gray-500 text-sm mt-1">{unidades?.length || 0} unidades encontradas</p>
+          <p className="text-gray-500 text-sm mt-1">{unidadesFiltradas.length} unidades encontradas</p>
         </div>
         {isSME && (
-          <button
-            onClick={() => setModalNovaUnidade(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
+          <button onClick={() => setModalNovaUnidade(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
             <Plus size={16} /> Nova Unidade
           </button>
         )}
@@ -297,20 +305,12 @@ export const UnidadesPage: React.FC = () => {
         <div className="flex gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar por nome ou código..."
-              value={search}
+            <input type="text" placeholder="Buscar por nome ou código..." value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <button
-            onClick={() => setShowFiltros(!showFiltros)}
-            className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-              showFiltros ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
+          <button onClick={() => setShowFiltros(!showFiltros)}
+            className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFiltros ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
             <Filter size={16} /> Filtros
             {(regiaoFiltro || situacaoFiltro) && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
           </button>
@@ -349,7 +349,7 @@ export const UnidadesPage: React.FC = () => {
         <div className="flex items-center justify-center h-48">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
-      ) : unidades?.length === 0 ? (
+      ) : unidadesFiltradas.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <Building2 className="mx-auto text-gray-300 mb-3" size={48} />
           <p className="text-gray-500 font-medium">Nenhuma unidade encontrada</p>
@@ -359,24 +359,19 @@ export const UnidadesPage: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Unidade</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Última Roçada</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Dias</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Situação</th>
+                {['Unidade','Região','Última Roçada','Dias','Situação'].map(h => (
+                  <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {unidades?.map((unidade) => {
-                const config = situacaoConfig[unidade.situacao_operacional as SituacaoOperacional];
+              {unidadesFiltradas.map((unidade) => {
+                const config = situacaoConfig[unidade._situacao] || situacaoConfig.EM_DIA;
                 const Icon = config.icon;
                 const dias = calcularDias(unidade.ultima_rocada);
                 return (
-                  <tr
-                    key={unidade.id}
-                    onClick={() => setUnidadeSelecionada(unidade)}
-                    className="hover:bg-blue-50 transition-colors cursor-pointer"
-                  >
+                  <tr key={unidade.id} onClick={() => setUnidadeSelecionada(unidade)}
+                    className="hover:bg-blue-50 transition-colors cursor-pointer">
                     <td className="px-6 py-4">
                       <p className="text-sm font-semibold text-gray-900">{unidade.nome}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{unidade.codigo_unidade}</p>
@@ -389,7 +384,9 @@ export const UnidadesPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-sm font-medium ${
-                        dias === null ? 'text-gray-400' : dias > 67 ? 'text-red-600' : dias > 52 ? 'text-amber-600' : 'text-emerald-600'
+                        dias === null ? 'text-gray-400' :
+                        dias > prazo + tolDepois ? 'text-red-600' :
+                        dias > prazo - tolAntes  ? 'text-amber-600' : 'text-emerald-600'
                       }`}>
                         {dias !== null ? `${dias} dias` : '-'}
                       </span>
@@ -407,12 +404,9 @@ export const UnidadesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal detalhe da unidade */}
+      {/* Modal detalhe */}
       {unidadeSelecionada && (
-        <ModalDetalhe
-          unidade={unidadeSelecionada}
-          onClose={() => setUnidadeSelecionada(null)}
-        />
+        <ModalDetalhe unidade={unidadeSelecionada} onClose={() => setUnidadeSelecionada(null)} />
       )}
 
       {/* Modal nova unidade */}
@@ -420,9 +414,7 @@ export const UnidadesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Nova Unidade Escolar</h2>
-            {erro && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>
-            )}
+            {erro && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>}
             <form onSubmit={handleCriar} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Código <span className="text-red-500">*</span></label>
@@ -449,9 +441,7 @@ export const UnidadesPage: React.FC = () => {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setModalNovaUnidade(false); setErro(''); }}
-                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                  Cancelar
-                </button>
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={criarUnidade.isPending}
                   className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                   {criarUnidade.isPending ? 'Criando...' : 'Criar'}
