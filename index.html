@@ -6,21 +6,20 @@
     <meta name="description" content="Sistema de Controle de Roçadas - Rede Municipal de Educação" />
     <title>Sistema de Roçadas</title>
     <script>
-      // Restaura a URL após o redirect do 404.html
-      // Necessário para o GitHub Pages funcionar com React Router
+      // Restaura a rota exata salva pelo 404.html
+      // Roda antes do React carregar, garantindo a rota correta
       (function(l) {
-        if (l.search[1] === '/' ) {
-          var decoded = l.search.slice(1).split('&').map(function(s) { 
-            return s.replace(/~and~/g, '&')
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
           });
-          window.history.replaceState(
-            null, null,
+          window.history.replaceState(null, null,
             l.pathname.slice(0, -1) + decoded[0] +
             (decoded[1] ? '?' + decoded[1] : '') +
             l.hash
           );
         }
-      }(window.location))
+      }(window.location));
     </script>
   </head>
   <body>
