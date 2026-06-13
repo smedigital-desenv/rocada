@@ -433,11 +433,10 @@ export const useCriarUnidade = () => {
 export const useEditarRocada = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, unidade_id, data_execucao, observacao_empresa }: {
-      id: string;
-      unidade_id: string;
-      data_execucao: string;
-      observacao_empresa?: string;
+    mutationFn: async ({ id, data_execucao, observacao_empresa }: {
+  id: string;
+  data_execucao: string;
+  observacao_empresa?: string;
     }) => {
       const { data: rocada } = await supabase
         .from('rocadas')
