@@ -1,280 +1,357 @@
 import React, { useState } from 'react';
-import { BarChart3, Download, AlertCircle, AlertTriangle, CheckCircle, Clock, MapPin, Calendar } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
+import { FileSpreadsheet, FileText, Filter, Download } from 'lucide-react';
+import { useUnidades, useHistorico } from '../hooks/useQueries';
 
-const relatorios = [
-  { id: 'criticas', label: 'Unidades Críticas', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', desc: 'Unidades acima de 67 dias sem roçada' },
-  { id: 'atencao', label: 'Unidades em Atenção', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', desc: 'Unidades entre 53 e 67 dias sem roçada' },
-  { id: 'historico', label: 'Histórico de Roçadas', icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', desc: 'Todas as roçadas realizadas' },
-  { id: 'pendencias', label: 'Pendências de Validação', icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', desc: 'Roçadas aguardando aprovação da SME' },
-  { id: 'por_regiao', label: 'Roçadas por Região', icon: MapPin, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', desc: 'Distribuição de roçadas por região' },
-  { id: 'por_periodo', label: 'Roçadas por Período', icon: Calendar, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-200', desc: 'Roçadas realizadas em um período específico' },
-];
+// ============================================================
+// TIPOS
+// ============================================================
+interface Filtros {
+  data_inicio: string;
+  data_fim: string;
+  unidade_id: string;
+  status: string;
+}
 
-export const RelatoriosPage: React.FC = () => {
-  const [relatorioAtivo, setRelatorioAtivo] = useState('criticas');
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+// ============================================================
+// FUNÇÕES DE EXPORTAÇÃO
+// ============================================================
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['relatorio', relatorioAtivo, dataInicio, dataFim],
-    queryFn: async () => {
-      if (relatorioAtivo === 'criticas') {
-        const { data, error } = await supabase
-          .from('unidades')
-          .select('*, regioes(nome)')
-          .eq('situacao_operacional', 'CRITICO')
-          .eq('ativa', true)
-          .order('ultima_rocada', { ascending: true });
-        if (error) throw error;
-        return data;
+// Exportar para Excel usando SheetJS (já disponível no projeto)
+const exportarExcel = async (dados: any[], filtros: Filtros) => {
+  const XLSX = await import('xlsx');
+
+  const linhas = dados.map((r) => ({
+    'Unidade': r.unidades?.nome || '-',
+    'Código': r.unidades?.codigo_unidade || '-',
+    'Região': r.unidades?.regioes?.nome || '-',
+    'Data Execução': r.data_execucao
+      ? new Date(r.data_execucao).toLocaleDateString('pt-BR')
+      : '-',
+    'Data Registro': r.created_at
+      ? new Date(r.created_at).toLocaleDateString('pt-BR')
+      : '-',
+    'Status': r.status_validacao === 'APROVADA'
+      ? 'Aprovada'
+      : r.status_validacao === 'REJEITADA'
+        ? 'Rejeitada'
+        : 'Pendente',
+    'Observação Empresa': r.observacao_empresa || '-',
+    'Observação SME': r.observacao_sme || '-',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  const wb = XLSX.utils.book_new();
+
+  // Ajustar largura das colunas
+  ws['!cols'] = [
+    { wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
+    { wch: 15 }, { wch: 12 }, { wch: 30 }, { wch: 30 },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Roçadas');
+
+  const periodo = filtros.data_inicio && filtros.data_fim
+    ? `_${filtros.data_inicio}_a_${filtros.data_fim}`
+    : '';
+  XLSX.writeFile(wb, `relatorio_rocadas${periodo}.xlsx`);
+};
+
+// Exportar para PDF usando jsPDF
+const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any) => {
+  const { default: jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+
+  const doc = new jsPDF({ orientation: 'landscape' });
+
+  // Título
+  doc.setFontSize(16);
+  doc.setTextColor(0, 102, 204);
+  doc.text('Relatório de Roçadas — SME Ribeirão Preto', 14, 18);
+
+  // Período
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  const periodo = filtros.data_inicio && filtros.data_fim
+    ? `Período: ${new Date(filtros.data_inicio).toLocaleDateString('pt-BR')} a ${new Date(filtros.data_fim).toLocaleDateString('pt-BR')}`
+    : 'Período: Todos os registros';
+  doc.text(periodo, 14, 26);
+  doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 32);
+
+  // Resumo
+  doc.setFontSize(11);
+  doc.setTextColor(0, 0, 0);
+  doc.text('Resumo', 14, 42);
+
+  autoTable(doc, {
+    startY: 46,
+    head: [['Total', 'Aprovadas', 'Pendentes', 'Rejeitadas']],
+    body: [[
+      resumo.total,
+      resumo.aprovadas,
+      resumo.pendentes,
+      resumo.rejeitadas,
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: [0, 102, 204] },
+    margin: { left: 14 },
+    tableWidth: 120,
+  });
+
+  // Tabela principal
+  doc.text('Detalhamento', 14, (doc as any).lastAutoTable.finalY + 12);
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 16,
+    head: [['Unidade', 'Região', 'Data Execução', 'Data Registro', 'Status']],
+    body: dados.map((r) => [
+      `${r.unidades?.nome || '-'} (${r.unidades?.codigo_unidade || '-'})`,
+      r.unidades?.regioes?.nome || '-',
+      r.data_execucao ? new Date(r.data_execucao).toLocaleDateString('pt-BR') : '-',
+      r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-',
+      r.status_validacao === 'APROVADA' ? 'Aprovada'
+        : r.status_validacao === 'REJEITADA' ? 'Rejeitada' : 'Pendente',
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [0, 102, 204] },
+    margin: { left: 14, right: 14 },
+    didDrawCell: (data: any) => {
+      // Colorir coluna de status
+      if (data.column.index === 4 && data.section === 'body') {
+        const val = data.cell.raw;
+        if (val === 'Aprovada') doc.setTextColor(0, 150, 80);
+        else if (val === 'Rejeitada') doc.setTextColor(200, 0, 0);
+        else doc.setTextColor(180, 120, 0);
       }
-
-      if (relatorioAtivo === 'atencao') {
-        const { data, error } = await supabase
-          .from('unidades')
-          .select('*, regioes(nome)')
-          .eq('situacao_operacional', 'ATENCAO')
-          .eq('ativa', true)
-          .order('ultima_rocada', { ascending: true });
-        if (error) throw error;
-        return data;
-      }
-
-      if (relatorioAtivo === 'pendencias') {
-        const { data, error } = await supabase
-          .from('rocadas')
-          .select('*, unidades(nome, codigo_unidade, regioes(nome))')
-          .eq('status_validacao', 'PENDENTE')
-          .order('data_registro', { ascending: true });
-        if (error) throw error;
-        return data;
-      }
-
-      if (relatorioAtivo === 'historico') {
-        const { data, error } = await supabase
-          .from('rocadas')
-          .select('*, unidades(nome, codigo_unidade, regioes(nome))')
-          .order('data_execucao', { ascending: false })
-          .limit(200);
-        if (error) throw error;
-        return data;
-      }
-
-      if (relatorioAtivo === 'por_regiao') {
-        const { data, error } = await supabase
-          .from('rocadas')
-          .select('*, unidades(nome, codigo_unidade, regiao_id, regioes(nome))')
-          .eq('status_validacao', 'APROVADA')
-          .order('data_execucao', { ascending: false });
-        if (error) throw error;
-        return data;
-      }
-
-      if (relatorioAtivo === 'por_periodo') {
-        let query = supabase
-          .from('rocadas')
-          .select('*, unidades(nome, codigo_unidade, regioes(nome))')
-          .order('data_execucao', { ascending: false });
-        if (dataInicio) query = query.gte('data_execucao', dataInicio);
-        if (dataFim) query = query.lte('data_execucao', dataFim);
-        const { data, error } = await query;
-        if (error) throw error;
-        return data;
-      }
-
-      return [];
     },
   });
 
-  const exportarCSV = () => {
-    if (!data || data.length === 0) return;
+  const periodo2 = filtros.data_inicio && filtros.data_fim
+    ? `_${filtros.data_inicio}_a_${filtros.data_fim}`
+    : '';
+  doc.save(`relatorio_rocadas${periodo2}.pdf`);
+};
 
-    const relatorio = relatorios.find(r => r.id === relatorioAtivo);
-    let cabecalho = '';
-    let linhas: string[] = [];
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+export const RelatoriosPage: React.FC = () => {
+  const hoje = new Date().toISOString().split('T')[0];
+  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
 
-    if (['criticas', 'atencao'].includes(relatorioAtivo)) {
-      cabecalho = 'Código,Nome,Região,Última Roçada,Próxima Roçada,Situação';
-      linhas = (data as any[]).map(u =>
-        `${u.codigo_unidade},"${u.nome}",${u.regioes?.nome || '-'},${u.ultima_rocada || '-'},${u.proxima_rocada || '-'},${u.situacao_operacional}`
-      );
-    } else {
-      cabecalho = 'Unidade,Código,Região,Data Execução,Data Registro,Status';
-      linhas = (data as any[]).map((r: any) =>
-        `"${r.unidades?.nome || '-'}",${r.unidades?.codigo_unidade || '-'},${r.unidades?.regioes?.nome || '-'},${r.data_execucao || '-'},${new Date(r.data_registro).toLocaleDateString('pt-BR')},${r.status_validacao}`
-      );
-    }
+  const [filtros, setFiltros] = useState<Filtros>({
+    data_inicio: trintaDiasAtras,
+    data_fim: hoje,
+    unidade_id: '',
+    status: '',
+  });
 
-    const csv = [cabecalho, ...linhas].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `relatorio-${relatorio?.label.toLowerCase().replace(/ /g, '-')}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
+
+  const { data: unidades } = useUnidades();
+  const { data: rocadas, isLoading } = useHistorico({
+    unidade_id: filtros.unidade_id || undefined,
+    status: filtros.status || undefined,
+    data_inicio: filtros.data_inicio || undefined,
+    data_fim: filtros.data_fim || undefined,
+  });
+
+  // Resumo
+  const resumo = {
+    total: rocadas?.length || 0,
+    aprovadas: rocadas?.filter((r) => r.status_validacao === 'APROVADA').length || 0,
+    pendentes: rocadas?.filter((r) => r.status_validacao === 'PENDENTE').length || 0,
+    rejeitadas: rocadas?.filter((r) => r.status_validacao === 'REJEITADA').length || 0,
   };
 
-  const relatorioInfo = relatorios.find(r => r.id === relatorioAtivo);
+  const handleExportarExcel = async () => {
+    if (!rocadas?.length) return;
+    setExportando('excel');
+    try {
+      await exportarExcel(rocadas, filtros);
+    } finally {
+      setExportando(null);
+    }
+  };
+
+  const handleExportarPDF = async () => {
+    if (!rocadas?.length) return;
+    setExportando('pdf');
+    try {
+      await exportarPDF(rocadas, filtros, resumo);
+    } finally {
+      setExportando(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
-        <p className="text-gray-500 text-sm mt-1">Gere e exporte relatórios do sistema</p>
+      {/* Cabeçalho */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
+          <p className="text-gray-500 text-sm mt-1">Exporte dados de roçadas em Excel ou PDF</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleExportarExcel}
+            disabled={!rocadas?.length || exportando !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+          >
+            <FileSpreadsheet size={16} />
+            {exportando === 'excel' ? 'Gerando...' : 'Exportar Excel'}
+          </button>
+          <button
+            onClick={handleExportarPDF}
+            disabled={!rocadas?.length || exportando !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+          >
+            <FileText size={16} />
+            {exportando === 'pdf' ? 'Gerando...' : 'Exportar PDF'}
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Tipos de Relatório */}
-        <div className="space-y-2">
-          {relatorios.map((r) => {
-            const Icon = r.icon;
-            return (
-              <button
-                key={r.id}
-                onClick={() => setRelatorioAtivo(r.id)}
-                className={`w-full text-left p-4 rounded-xl border transition-all ${
-                  relatorioAtivo === r.id
-                    ? `${r.bg} ${r.border} border`
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon size={18} className={relatorioAtivo === r.id ? r.color : 'text-gray-400'} />
-                  <div>
-                    <p className={`text-sm font-medium ${relatorioAtivo === r.id ? r.color : 'text-gray-700'}`}>
-                      {r.label}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{r.desc}</p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+      {/* Filtros */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter size={16} className="text-gray-500" />
+          <h2 className="text-sm font-semibold text-gray-700">Filtros</h2>
         </div>
-
-        {/* Conteúdo */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Header do relatório */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {relatorioInfo && (
-                  <>
-                    <relatorioInfo.icon size={20} className={relatorioInfo.color} />
-                    <div>
-                      <h2 className="text-base font-semibold text-gray-900">{relatorioInfo.label}</h2>
-                      <p className="text-xs text-gray-500">{data?.length || 0} registros</p>
-                    </div>
-                  </>
-                )}
-              </div>
-              <button
-                onClick={exportarCSV}
-                disabled={!data || data.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
-              >
-                <Download size={16} />
-                Exportar CSV
-              </button>
-            </div>
-
-            {/* Filtro de período */}
-            {relatorioAtivo === 'por_periodo' && (
-              <div className="flex gap-4 mt-4 pt-4 border-t border-gray-100">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Data início</label>
-                  <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Data fim</label>
-                  <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-            )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Data Início</label>
+            <input
+              type="date"
+              value={filtros.data_inicio}
+              onChange={(e) => setFiltros({ ...filtros, data_inicio: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-
-          {/* Tabela */}
-          {isLoading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : !data || data.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <BarChart3 className="mx-auto text-gray-300 mb-3" size={40} />
-              <p className="text-gray-500">Nenhum dado encontrado para este relatório.</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {['criticas', 'atencao'].includes(relatorioAtivo) ? (
-                        <>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Código</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Nome</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Última Roçada</th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Unidade</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Execução</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {(data as any[]).map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        {['criticas', 'atencao'].includes(relatorioAtivo) ? (
-                          <>
-                            <td className="px-4 py-3 text-sm text-gray-600">{item.codigo_unidade}</td>
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nome}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{item.regioes?.nome || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {item.ultima_rocada
-                                ? new Date(item.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
-                                : <span className="text-gray-400">Nunca</span>}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-4 py-3">
-                              <p className="text-sm font-medium text-gray-900">{item.unidades?.nome || '-'}</p>
-                              <p className="text-xs text-gray-500">{item.unidades?.codigo_unidade || '-'}</p>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{item.unidades?.regioes?.nome || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {new Date(item.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                item.status_validacao === 'APROVADA' ? 'bg-emerald-100 text-emerald-700' :
-                                item.status_validacao === 'REJEITADA' ? 'bg-red-100 text-red-700' :
-                                'bg-amber-100 text-amber-700'
-                              }`}>
-                                {item.status_validacao}
-                              </span>
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Data Fim</label>
+            <input
+              type="date"
+              value={filtros.data_fim}
+              onChange={(e) => setFiltros({ ...filtros, data_fim: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Unidade</label>
+            <select
+              value={filtros.unidade_id}
+              onChange={(e) => setFiltros({ ...filtros, unidade_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todas</option>
+              {unidades?.map((u) => (
+                <option key={u.id} value={u.id}>{u.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+            <select
+              value={filtros.status}
+              onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos</option>
+              <option value="APROVADA">Aprovada</option>
+              <option value="PENDENTE">Pendente</option>
+              <option value="REJEITADA">Rejeitada</option>
+            </select>
+          </div>
         </div>
+      </div>
+
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total', value: resumo.total, cor: 'blue' },
+          { label: 'Aprovadas', value: resumo.aprovadas, cor: 'emerald' },
+          { label: 'Pendentes', value: resumo.pendentes, cor: 'yellow' },
+          { label: 'Rejeitadas', value: resumo.rejeitadas, cor: 'red' },
+        ].map((item) => (
+          <div key={item.label} className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs font-medium text-gray-500 uppercase">{item.label}</p>
+            <p className={`text-3xl font-bold mt-1 text-${item.cor}-600`}>{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabela */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">
+            Registros encontrados
+          </h2>
+          {rocadas?.length ? (
+            <span className="text-xs text-gray-400">{rocadas.length} registro(s)</span>
+          ) : null}
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center h-48">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : !rocadas?.length ? (
+          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+            <Download size={32} className="mb-2 opacity-30" />
+            <p className="text-sm">Nenhum registro encontrado para os filtros selecionados</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Unidade</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Executada</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Registrada</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rocadas.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-medium text-gray-900">{r.unidades?.nome}</p>
+                      <p className="text-xs text-gray-400">{r.unidades?.codigo_unidade}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {r.unidades?.regioes?.nome || '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {r.data_execucao
+                        ? new Date(r.data_execucao).toLocaleDateString('pt-BR')
+                        : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {r.created_at
+                        ? new Date(r.created_at).toLocaleDateString('pt-BR')
+                        : '-'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                        r.status_validacao === 'APROVADA'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : r.status_validacao === 'REJEITADA'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {r.status_validacao === 'APROVADA' ? 'Aprovada'
+                          : r.status_validacao === 'REJEITADA' ? 'Rejeitada' : 'Pendente'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
