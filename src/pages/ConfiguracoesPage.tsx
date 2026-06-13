@@ -62,13 +62,13 @@ const SecaoPrazos: React.FC<{ configs: any }> = ({ configs }) => {
   const [sucesso, setSucesso] = useState(false);
   const salvar = useSalvarConfiguracoes();
 
-  useEffect(() => {
-    if (configs) {
-      setPrazo(String(configs.prazo_dias || 60));
-      setTolAntes(String(configs.tolerancia_antes || 7));
-      setTolDepois(String(configs.tolerancia_depois || 7));
-    }
-  }, [configs]);
+useEffect(() => {
+  if (configs) {
+    setPrazo(String(configs.prazo_dias ?? 60));
+    setTolAntes(String(configs.tolerancia_antes ?? 7));
+    setTolDepois(String(configs.tolerancia_depois ?? 7));
+  }
+}, [configs]);
 
   const handleSalvar = async () => {
     await salvar.mutateAsync({
