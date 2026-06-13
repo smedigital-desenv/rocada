@@ -1,31 +1,254 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle, Clock, Building2 } from 'lucide-react';
-import { useUnidades, useRegioes, useCriarUnidade } from '../hooks/useQueries';
+import {
+  Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle,
+  Clock, Building2, X, History, CalendarPlus
+} from 'lucide-react';
+import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada } from '../hooks/useQueries';
 import { SituacaoOperacional } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const situacaoConfig = {
-  EM_DIA: { label: 'Em Dia', color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle, iconColor: 'text-emerald-500' },
-  ATENCAO: { label: 'Atenção', color: 'bg-amber-100 text-amber-700', icon: AlertTriangle, iconColor: 'text-amber-500' },
-  CRITICO: { label: 'Crítico', color: 'bg-red-100 text-red-700', icon: AlertCircle, iconColor: 'text-red-500' },
-  PENDENCIA_SME: { label: 'Pendência SME', color: 'bg-blue-100 text-blue-700', icon: Clock, iconColor: 'text-blue-500' },
+  EM_DIA:       { label: 'Em Dia',        color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  ATENCAO:      { label: 'Atenção',       color: 'bg-amber-100 text-amber-700',     icon: AlertTriangle },
+  CRITICO:      { label: 'Crítico',       color: 'bg-red-100 text-red-700',         icon: AlertCircle },
+  PENDENCIA_SME:{ label: 'Pendência SME', color: 'bg-blue-100 text-blue-700',       icon: Clock },
+};
+
+const statusRocadaConfig: Record<string, { label: string; color: string }> = {
+  APROVADA:  { label: 'Aprovada',  color: 'bg-emerald-100 text-emerald-700' },
+  PENDENTE:  { label: 'Pendente',  color: 'bg-yellow-100 text-yellow-700' },
+  REJEITADA: { label: 'Rejeitada', color: 'bg-red-100 text-red-700' },
 };
 
 const calcularDias = (ultima_rocada?: string) => {
   if (!ultima_rocada) return null;
-  const hoje = new Date();
-  const ultima = new Date(ultima_rocada);
-  const diff = Math.floor((hoje.getTime() - ultima.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.floor((Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24));
   return diff;
 };
 
+// ── Modal de detalhe da unidade ──────────────────────────────────────────────
+const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade, onClose }) => {
+  const { isEmpresa } = useAuth();
+  const [aba, setAba] = useState<'historico' | 'registrar'>('historico');
+  const [dataExecucao, setDataExecucao] = useState('');
+  const [observacao, setObservacao] = useState('');
+  const [erro, setErro] = useState('');
+  const [sucesso, setSucesso] = useState('');
+
+  const { data: rocadas, isLoading } = useRocadasUnidade(unidade.id);
+  const criarRocada = useCriarRocada();
+
+  const config = situacaoConfig[unidade.situacao_operacional as SituacaoOperacional] || situacaoConfig.EM_DIA;
+  const Icon = config.icon;
+
+  const handleRegistrar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro('');
+    if (!dataExecucao) { setErro('Informe a data de execução'); return; }
+    try {
+      await criarRocada.mutateAsync({
+        unidade_id: unidade.id,
+        data_execucao: dataExecucao,
+        observacao_empresa: observacao,
+      });
+      setSucesso('Roçada registrada! Aguardando validação da SME.');
+      setDataExecucao('');
+      setObservacao('');
+      setAba('historico');
+      setTimeout(() => setSucesso(''), 4000);
+    } catch (err: any) {
+      setErro(err.message || 'Erro ao registrar roçada');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
+        {/* Cabeçalho do modal */}
+        <div className="flex items-start justify-between p-6 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{unidade.nome}</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {unidade.codigo_unidade} · {unidade.regioes?.nome || 'Sem região'}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+            <X size={18} className="text-gray-500" />
+          </button>
+        </div>
+
+        {/* Cards de info */}
+        <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-gray-100">
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500 mb-1">Situação</p>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+              <Icon size={11} />
+              {config.label}
+            </span>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500 mb-1">Última Roçada</p>
+            <p className="text-sm font-semibold text-gray-800">
+              {unidade.ultima_rocada
+                ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
+                : 'Nunca'}
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500 mb-1">Total de Roçadas</p>
+            <p className="text-sm font-bold text-blue-600">{rocadas?.length || 0}</p>
+          </div>
+        </div>
+
+        {/* Abas (só para EMPRESA) */}
+        {isEmpresa && (
+          <div className="flex border-b border-gray-100 px-6">
+            <button
+              onClick={() => setAba('historico')}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                aba === 'historico' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <History size={15} /> Histórico
+            </button>
+            <button
+              onClick={() => setAba('registrar')}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                aba === 'registrar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <CalendarPlus size={15} /> Registrar Roçada
+            </button>
+          </div>
+        )}
+
+        {/* Conteúdo rolável */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Mensagem de sucesso */}
+          {sucesso && (
+            <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-sm text-emerald-700">
+              <CheckCircle size={16} />
+              {sucesso}
+            </div>
+          )}
+
+          {/* Aba Histórico */}
+          {aba === 'historico' && (
+            <>
+              {isLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              ) : !rocadas?.length ? (
+                <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                  <History size={28} className="mb-2 opacity-30" />
+                  <p className="text-sm">Nenhuma roçada registrada ainda</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data Execução</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Registrada</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Observação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rocadas.map((r) => {
+                      const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
+                      return (
+                        <tr key={r.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-3 text-sm text-gray-700">
+                            {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                          </td>
+                          <td className="px-6 py-3 text-sm text-gray-500">
+                            {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
+                              {st.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 text-sm text-gray-500">
+                            {r.observacao_empresa || r.observacao_sme || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {/* Aba Registrar Roçada (só EMPRESA) */}
+          {aba === 'registrar' && isEmpresa && (
+            <form onSubmit={handleRegistrar} className="p-6 space-y-4">
+              {erro && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {erro}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Data de Execução <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={dataExecucao}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setDataExecucao(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Observação (opcional)
+                </label>
+                <textarea
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                  rows={3}
+                  placeholder="Alguma observação sobre a roçada realizada..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAba('historico')}
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={criarRocada.isPending}
+                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {criarRocada.isPending ? 'Registrando...' : 'Registrar Roçada'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Página principal ──────────────────────────────────────────────────────────
 export const UnidadesPage: React.FC = () => {
   const { isSME } = useAuth();
   const [search, setSearch] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState('');
   const [showFiltros, setShowFiltros] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalNovaUnidade, setModalNovaUnidade] = useState(false);
+  const [unidadeSelecionada, setUnidadeSelecionada] = useState<any>(null);
   const [formData, setFormData] = useState({ codigo_unidade: '', nome: '', regiao_id: '' });
   const [erro, setErro] = useState('');
 
@@ -34,130 +257,42 @@ export const UnidadesPage: React.FC = () => {
     regiao_id: regiaoFiltro || undefined,
     situacao: (situacaoFiltro as SituacaoOperacional) || undefined,
   });
-
   const { data: regioes } = useRegioes();
   const criarUnidade = useCriarUnidade();
 
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
+    if (!formData.codigo_unidade || !formData.nome || !formData.regiao_id) {
+      setErro('Preencha todos os campos'); return;
+    }
     try {
-      if (!formData.codigo_unidade || !formData.nome || !formData.regiao_id) {
-        setErro('Preencha todos os campos');
-        return;
-      }
       await criarUnidade.mutateAsync(formData);
-      setModalOpen(false);
+      setModalNovaUnidade(false);
       setFormData({ codigo_unidade: '', nome: '', regiao_id: '' });
     } catch (err: any) {
       setErro(err.message || 'Erro ao criar unidade');
     }
   };
 
-  // Modal aberto
-  if (modalOpen) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
-        </div>
-
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Nova Unidade Escolar</h2>
-
-            {erro && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                {erro}
-              </div>
-            )}
-
-            <form onSubmit={handleCriar} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Código <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.codigo_unidade}
-                  onChange={(e) => setFormData({ ...formData, codigo_unidade: e.target.value })}
-                  placeholder="Ex: ESC001"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                  placeholder="Nome da unidade"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Região <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.regiao_id}
-                  onChange={(e) => setFormData({ ...formData, regiao_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Selecione...</option>
-                  {regioes?.map((r) => (
-                    <option key={r.id} value={r.id}>{r.nome}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setModalOpen(false); setErro(''); }}
-                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={criarUnidade.isPending}
-                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {criarUnidade.isPending ? 'Criando...' : 'Criar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {unidades?.length || 0} unidades encontradas
-          </p>
+          <p className="text-gray-500 text-sm mt-1">{unidades?.length || 0} unidades encontradas</p>
         </div>
         {isSME && (
-          <button 
-            onClick={() => setModalOpen(true)}
+          <button
+            onClick={() => setModalNovaUnidade(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
           >
-            <Plus size={16} />
-            Nova Unidade
+            <Plus size={16} /> Nova Unidade
           </button>
         )}
       </div>
 
+      {/* Busca e filtros */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex gap-3">
           <div className="flex-1 relative">
@@ -170,44 +305,30 @@ export const UnidadesPage: React.FC = () => {
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
           <button
             onClick={() => setShowFiltros(!showFiltros)}
             className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
               showFiltros ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <Filter size={16} />
-            Filtros
-            {(regiaoFiltro || situacaoFiltro) && (
-              <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-            )}
+            <Filter size={16} /> Filtros
+            {(regiaoFiltro || situacaoFiltro) && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
           </button>
         </div>
-
         {showFiltros && (
           <div className="mt-4 pt-4 border-t border-gray-100 flex gap-4">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Região</label>
-              <select
-                value={regiaoFiltro}
-                onChange={(e) => setRegiaoFiltro(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select value={regiaoFiltro} onChange={(e) => setRegiaoFiltro(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Todas as regiões</option>
-                {regioes?.map((r) => (
-                  <option key={r.id} value={r.id}>{r.nome}</option>
-                ))}
+                {regioes?.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
               </select>
             </div>
-
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Situação</label>
-              <select
-                value={situacaoFiltro}
-                onChange={(e) => setSituacaoFiltro(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select value={situacaoFiltro} onChange={(e) => setSituacaoFiltro(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Todas as situações</option>
                 <option value="EM_DIA">Em Dia</option>
                 <option value="ATENCAO">Atenção</option>
@@ -215,42 +336,34 @@ export const UnidadesPage: React.FC = () => {
                 <option value="PENDENCIA_SME">Pendência SME</option>
               </select>
             </div>
-
             <div className="flex items-end">
-              <button
-                onClick={() => { setRegiaoFiltro(''); setSituacaoFiltro(''); }}
-                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                Limpar
-              </button>
+              <button onClick={() => { setRegiaoFiltro(''); setSituacaoFiltro(''); }}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Limpar</button>
             </div>
           </div>
         )}
       </div>
 
+      {/* Tabela */}
       {isLoading ? (
         <div className="flex items-center justify-center h-48">
-          <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500 text-sm">Carregando unidades...</p>
-          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
       ) : unidades?.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <Building2 className="mx-auto text-gray-300 mb-3" size={48} />
           <p className="text-gray-500 font-medium">Nenhuma unidade encontrada</p>
-          <p className="text-gray-400 text-sm mt-1">Tente ajustar os filtros ou cadastre uma nova unidade</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unidade</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Região</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Última Roçada</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dias</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Situação</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Unidade</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Última Roçada</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Dias</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Situação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -258,39 +371,32 @@ export const UnidadesPage: React.FC = () => {
                 const config = situacaoConfig[unidade.situacao_operacional as SituacaoOperacional];
                 const Icon = config.icon;
                 const dias = calcularDias(unidade.ultima_rocada);
-
                 return (
-                  <tr key={unidade.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={unidade.id}
+                    onClick={() => setUnidadeSelecionada(unidade)}
+                    className="hover:bg-blue-50 transition-colors cursor-pointer"
+                  >
                     <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{unidade.nome}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{unidade.codigo_unidade}</p>
-                      </div>
+                      <p className="text-sm font-semibold text-gray-900">{unidade.nome}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{unidade.codigo_unidade}</p>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">{unidade.regioes?.nome || '-'}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">
-                        {unidade.ultima_rocada
-                          ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
-                          : <span className="text-gray-400">Nunca</span>
-                        }
-                      </span>
+                    <td className="px-6 py-4 text-sm text-gray-600">{unidade.regioes?.nome || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {unidade.ultima_rocada
+                        ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
+                        : <span className="text-gray-400">Nunca</span>}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-sm font-medium ${
-                        dias === null ? 'text-gray-400' :
-                        dias > 67 ? 'text-red-600' :
-                        dias > 52 ? 'text-amber-600' : 'text-emerald-600'
+                        dias === null ? 'text-gray-400' : dias > 67 ? 'text-red-600' : dias > 52 ? 'text-amber-600' : 'text-emerald-600'
                       }`}>
                         {dias !== null ? `${dias} dias` : '-'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
-                        <Icon size={12} />
-                        {config.label}
+                        <Icon size={12} />{config.label}
                       </span>
                     </td>
                   </tr>
@@ -298,6 +404,61 @@ export const UnidadesPage: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Modal detalhe da unidade */}
+      {unidadeSelecionada && (
+        <ModalDetalhe
+          unidade={unidadeSelecionada}
+          onClose={() => setUnidadeSelecionada(null)}
+        />
+      )}
+
+      {/* Modal nova unidade */}
+      {modalNovaUnidade && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Nova Unidade Escolar</h2>
+            {erro && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>
+            )}
+            <form onSubmit={handleCriar} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código <span className="text-red-500">*</span></label>
+                <input type="text" value={formData.codigo_unidade}
+                  onChange={(e) => setFormData({ ...formData, codigo_unidade: e.target.value })}
+                  placeholder="Ex: ESC001"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome <span className="text-red-500">*</span></label>
+                <input type="text" value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  placeholder="Nome da unidade"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Região <span className="text-red-500">*</span></label>
+                <select value={formData.regiao_id}
+                  onChange={(e) => setFormData({ ...formData, regiao_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Selecione...</option>
+                  {regioes?.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => { setModalNovaUnidade(false); setErro(''); }}
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={criarUnidade.isPending}
+                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {criarUnidade.isPending ? 'Criando...' : 'Criar'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
