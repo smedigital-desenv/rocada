@@ -290,8 +290,20 @@ export const useCriarRocada = () => {
     mutationFn: async (payload: CreateRocadaRequest) => {
       const { data: usuario } = await supabase.auth.getUser();
 
-      // CORREÇÃO: Apenas registra a roçada como PENDENTE.
-      // A unidade só é atualizada depois que a SME APROVAR.
+      // Verificar se já existe roçada nesta unidade nesta data
+      const { data: existente } = await supabase
+        .from('rocadas')
+        .select('id')
+        .eq('unidade_id', payload.unidade_id)
+        .eq('data_execucao', payload.data_execucao)
+        .maybeSingle();
+
+      if (existente) {
+        throw new Error('Já existe uma roçada registrada nesta unidade nesta data.');
+      }
+
+      // Registra a roçada como PENDENTE
+      // A unidade só é atualizada depois que a SME APROVAR
       const { data, error } = await supabase.from('rocadas').insert({
         unidade_id: payload.unidade_id,
         data_execucao: payload.data_execucao,
@@ -349,7 +361,7 @@ export const useValidarRocada = () => {
 
       if (error) throw error;
 
-      // CORREÇÃO: Se APROVADA, atualiza ultima_rocada e situacao da unidade
+      // Se APROVADA, atualiza ultima_rocada e situacao da unidade
       if (payload.status === 'APROVADA') {
         const dataExecucao = rocada.data_execucao;
         const proximaRocada = new Date(
@@ -368,7 +380,7 @@ export const useValidarRocada = () => {
           .eq('id', rocada.unidade_id);
       }
 
-      // Se REJEITADA, volta situação para o estado anterior
+      // Se REJEITADA, volta situação para EM_DIA
       if (payload.status === 'REJEITADA') {
         await supabase
           .from('unidades')
