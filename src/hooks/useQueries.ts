@@ -121,6 +121,47 @@ export const useRocadasUnidade = (unidadeId: string) => {
 };
 
 // ============================================
+// QUERIES - HISTORICO
+// ============================================
+
+export const useHistorico = (filtros?: {
+  unidade_id?: string;
+  status?: string;
+  data_inicio?: string;
+  data_fim?: string;
+}) => {
+  return useQuery({
+    queryKey: ['historico', filtros],
+    queryFn: async () => {
+      let query = supabase
+        .from('rocadas')
+        .select('*, unidades(id, nome, codigo_unidade, regioes(nome))')
+        .order('data_execucao', { ascending: false });
+
+      if (filtros?.unidade_id) {
+        query = query.eq('unidade_id', filtros.unidade_id);
+      }
+
+      if (filtros?.status) {
+        query = query.eq('status_validacao', filtros.status);
+      }
+
+      if (filtros?.data_inicio) {
+        query = query.gte('data_execucao', filtros.data_inicio);
+      }
+
+      if (filtros?.data_fim) {
+        query = query.lte('data_execucao', filtros.data_fim);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+};
+
+// ============================================
 // QUERIES - DASHBOARD
 // ============================================
 
@@ -128,7 +169,6 @@ export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['dashboard', 'stats'],
     queryFn: async () => {
-      // Buscar todas as unidades
       const { data: unidades, error } = await supabase
         .from('unidades')
         .select('situacao_operacional, ativa');
@@ -154,7 +194,6 @@ export const useDashboardCharts = () => {
   return useQuery({
     queryKey: ['dashboard', 'charts'],
     queryFn: async () => {
-      // Distribuição por situação
       const { data: unidades } = await supabase
         .from('unidades')
         .select('situacao_operacional, regiao_id, ultima_rocada')
@@ -162,7 +201,6 @@ export const useDashboardCharts = () => {
 
       if (!unidades) throw new Error('Erro ao buscar dados');
 
-      // Gráfico 1: Distribuição por situação
       const distribuicao: Record<string, number> = {};
       unidades.forEach((u) => {
         distribuicao[u.situacao_operacional] = (distribuicao[u.situacao_operacional] || 0) + 1;
@@ -180,7 +218,6 @@ export const useDashboardCharts = () => {
         value,
       }));
 
-      // Gráfico 2: Unidades por região
       const { data: regioes } = await supabase.from('regioes').select('id, nome');
 
       const unidades_por_regiao = (regioes || []).map((regiao) => ({
@@ -188,7 +225,6 @@ export const useDashboardCharts = () => {
         value: unidades.filter((u) => u.regiao_id === regiao.id).length,
       }));
 
-      // Gráfico 3: Roçadas por mês
       const { data: rocadas } = await supabase
         .from('rocadas')
         .select('data_execucao')
@@ -254,6 +290,8 @@ export const useCriarRocada = () => {
     mutationFn: async (payload: CreateRocadaRequest) => {
       const { data: usuario } = await supabase.auth.getUser();
 
+      // CORREÇÃO: Apenas registra a roçada como PENDENTE.
+      // A unidade só é atualizada depois que a SME APROVAR.
       const { data, error } = await supabase.from('rocadas').insert({
         unidade_id: payload.unidade_id,
         data_execucao: payload.data_execucao,
@@ -264,18 +302,10 @@ export const useCriarRocada = () => {
 
       if (error) throw error;
 
-      // Atualizar unidade
+      // Marca a unidade como aguardando validação da SME
       await supabase
         .from('unidades')
-        .update({
-          ultima_rocada: payload.data_execucao,
-          proxima_rocada: new Date(
-            new Date(payload.data_execucao).getTime() + 60 * 24 * 60 * 60 * 1000
-          )
-            .toISOString()
-            .split('T')[0],
-          situacao_operacional: 'EM_DIA',
-        })
+        .update({ situacao_operacional: 'PENDENCIA_SME' })
         .eq('id', payload.unidade_id);
 
       return data;
@@ -298,6 +328,16 @@ export const useValidarRocada = () => {
     }: ValidarRocadaRequest & { rocadaId: string }) => {
       const { data: usuario } = await supabase.auth.getUser();
 
+      // Buscar dados da roçada para atualizar a unidade depois
+      const { data: rocada, error: erroRocada } = await supabase
+        .from('rocadas')
+        .select('unidade_id, data_execucao')
+        .eq('id', rocadaId)
+        .single();
+
+      if (erroRocada) throw erroRocada;
+
+      // Atualizar status da roçada
       const { data, error } = await supabase
         .from('rocadas')
         .update({
@@ -308,11 +348,41 @@ export const useValidarRocada = () => {
         .eq('id', rocadaId);
 
       if (error) throw error;
+
+      // CORREÇÃO: Se APROVADA, atualiza ultima_rocada e situacao da unidade
+      if (payload.status === 'APROVADA') {
+        const dataExecucao = rocada.data_execucao;
+        const proximaRocada = new Date(
+          new Date(dataExecucao).getTime() + 60 * 24 * 60 * 60 * 1000
+        )
+          .toISOString()
+          .split('T')[0];
+
+        await supabase
+          .from('unidades')
+          .update({
+            ultima_rocada: dataExecucao,
+            proxima_rocada: proximaRocada,
+            situacao_operacional: 'EM_DIA',
+          })
+          .eq('id', rocada.unidade_id);
+      }
+
+      // Se REJEITADA, volta situação para o estado anterior
+      if (payload.status === 'REJEITADA') {
+        await supabase
+          .from('unidades')
+          .update({ situacao_operacional: 'EM_DIA' })
+          .eq('id', rocada.unidade_id);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rocadas'] });
+      queryClient.invalidateQueries({ queryKey: ['unidades'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historico'] });
     },
   });
 };
