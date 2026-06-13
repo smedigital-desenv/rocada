@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, FileText, Filter, Download } from 'lucide-react';
 import { useUnidades, useHistorico } from '../hooks/useQueries';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../lib/supabase';
 
 // ============================================================
 // TIPOS
@@ -12,37 +14,49 @@ interface Filtros {
   status: string;
 }
 
-// ============================================================
-// FUNÇÕES DE EXPORTAÇÃO
-// ============================================================
+interface Configs {
+  cabecalho_pdf?: string;
+  rodape_pdf?: string;
+  nome_secretaria?: string;
+  logo_url?: string;
+  nome_empresa?: string;
+  numero_contrato?: string;
+}
 
-// Exportar para Excel usando SheetJS (já disponível no projeto)
-const exportarExcel = async (dados: any[], filtros: Filtros) => {
+// ============================================================
+// EXPORTAR EXCEL — com cabeçalho da secretaria
+// ============================================================
+const exportarExcel = async (dados: any[], filtros: Filtros, configs: Configs) => {
   const XLSX = await import('xlsx');
-
-  const linhas = dados.map((r) => ({
-    'Unidade': r.unidades?.nome || '-',
-    'Código': r.unidades?.codigo_unidade || '-',
-    'Região': r.unidades?.regioes?.nome || '-',
-    'Data Execução': r.data_execucao
-      ? new Date(r.data_execucao).toLocaleDateString('pt-BR')
-      : '-',
-    'Data Registro': r.created_at
-      ? new Date(r.created_at).toLocaleDateString('pt-BR')
-      : '-',
-    'Status': r.status_validacao === 'APROVADA'
-      ? 'Aprovada'
-      : r.status_validacao === 'REJEITADA'
-        ? 'Rejeitada'
-        : 'Pendente',
-    'Observação Empresa': r.observacao_empresa || '-',
-    'Observação SME': r.observacao_sme || '-',
-  }));
-
-  const ws = XLSX.utils.json_to_sheet(linhas);
   const wb = XLSX.utils.book_new();
 
-  // Ajustar largura das colunas
+  // Linhas de cabeçalho
+  const cabecalho = [
+    [configs.cabecalho_pdf || 'Prefeitura Municipal'],
+    [configs.nome_secretaria || 'Secretaria Municipal de Educação'],
+    ['Relatório de Roçadas'],
+    filtros.data_inicio && filtros.data_fim
+      ? [`Período: ${new Date(filtros.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(filtros.data_fim + 'T00:00:00').toLocaleDateString('pt-BR')}`]
+      : ['Período: Todos os registros'],
+    [`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`],
+    configs.numero_contrato ? [`Contrato Nº ${configs.numero_contrato}`] : [],
+    [], // linha em branco
+    ['Unidade', 'Código', 'Região', 'Data Execução', 'Data Registro', 'Status', 'Observação Empresa', 'Observação SME'],
+  ];
+
+  const linhasDados = dados.map((r) => [
+    r.unidades?.nome || '-',
+    r.unidades?.codigo_unidade || '-',
+    r.unidades?.regioes?.nome || '-',
+    r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-',
+    r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-',
+    r.status_validacao === 'APROVADA' ? 'Aprovada' : r.status_validacao === 'REJEITADA' ? 'Rejeitada' : 'Pendente',
+    r.observacao_empresa || '-',
+    r.observacao_sme || '-',
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([...cabecalho, ...linhasDados]);
+
   ws['!cols'] = [
     { wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
     { wch: 15 }, { wch: 12 }, { wch: 30 }, { wch: 30 },
@@ -51,62 +65,102 @@ const exportarExcel = async (dados: any[], filtros: Filtros) => {
   XLSX.utils.book_append_sheet(wb, ws, 'Roçadas');
 
   const periodo = filtros.data_inicio && filtros.data_fim
-    ? `_${filtros.data_inicio}_a_${filtros.data_fim}`
-    : '';
+    ? `_${filtros.data_inicio}_a_${filtros.data_fim}` : '';
   XLSX.writeFile(wb, `relatorio_rocadas${periodo}.xlsx`);
 };
 
-// Exportar para PDF usando jsPDF
-const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any) => {
+// ============================================================
+// EXPORTAR PDF — com cabeçalho, rodapé e logo das configurações
+// ============================================================
+const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any, configs: Configs) => {
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF({ orientation: 'landscape' });
+  const pageWidth = doc.internal.pageSize.getWidth();
 
-  // Título
-  doc.setFontSize(16);
+  // ── Cabeçalho ──
+  let yPos = 14;
+
+  // Logo (se configurado)
+  if (configs.logo_url) {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = configs.logo_url!;
+      });
+      if (img.complete && img.naturalWidth > 0) {
+        doc.addImage(img, 'PNG', 14, yPos, 20, 20);
+        yPos += 2;
+      }
+    } catch (_) {}
+  }
+
+  const xTexto = configs.logo_url ? 38 : 14;
+
+  // Nome da prefeitura/cabeçalho
+  doc.setFontSize(14);
   doc.setTextColor(0, 102, 204);
-  doc.text('Relatório de Roçadas — SME Ribeirão Preto', 14, 18);
+  doc.text(configs.cabecalho_pdf || 'Prefeitura Municipal', xTexto, yPos + 6);
 
-  // Período
-  doc.setFontSize(10);
+  // Nome da secretaria
+  doc.setFontSize(11);
+  doc.setTextColor(60, 60, 60);
+  doc.text(configs.nome_secretaria || 'Secretaria Municipal de Educação', xTexto, yPos + 13);
+
+  // Título do relatório
+  doc.setFontSize(13);
+  doc.setTextColor(0, 0, 0);
+  doc.text('Relatório de Roçadas', xTexto, yPos + 21);
+
+  yPos = configs.logo_url ? 40 : 34;
+
+  // Linha separadora
+  doc.setDrawColor(200, 200, 200);
+  doc.line(14, yPos, pageWidth - 14, yPos);
+  yPos += 6;
+
+  // Período e data de geração
+  doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   const periodo = filtros.data_inicio && filtros.data_fim
-    ? `Período: ${new Date(filtros.data_inicio).toLocaleDateString('pt-BR')} a ${new Date(filtros.data_fim).toLocaleDateString('pt-BR')}`
+    ? `Período: ${new Date(filtros.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(filtros.data_fim + 'T00:00:00').toLocaleDateString('pt-BR')}`
     : 'Período: Todos os registros';
-  doc.text(periodo, 14, 26);
-  doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 32);
+  doc.text(periodo, 14, yPos);
+  doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth - 14, yPos, { align: 'right' });
+  yPos += 8;
 
-  // Resumo
-  doc.setFontSize(11);
+  // ── Resumo ──
+  doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  doc.text('Resumo', 14, 42);
+  doc.text('Resumo', 14, yPos);
+  yPos += 4;
 
   autoTable(doc, {
-    startY: 46,
+    startY: yPos,
     head: [['Total', 'Aprovadas', 'Pendentes', 'Rejeitadas']],
-    body: [[
-      resumo.total,
-      resumo.aprovadas,
-      resumo.pendentes,
-      resumo.rejeitadas,
-    ]],
+    body: [[resumo.total, resumo.aprovadas, resumo.pendentes, resumo.rejeitadas]],
     theme: 'grid',
     headStyles: { fillColor: [0, 102, 204] },
     margin: { left: 14 },
-    tableWidth: 120,
+    tableWidth: 100,
   });
 
-  // Tabela principal
-  doc.text('Detalhamento', 14, (doc as any).lastAutoTable.finalY + 12);
+  // ── Detalhamento ──
+  const posDepoisResumo = (doc as any).lastAutoTable.finalY + 8;
+  doc.setFontSize(10);
+  doc.text('Detalhamento', 14, posDepoisResumo);
 
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 16,
+    startY: posDepoisResumo + 4,
     head: [['Unidade', 'Região', 'Data Execução', 'Data Registro', 'Status']],
     body: dados.map((r) => [
       `${r.unidades?.nome || '-'} (${r.unidades?.codigo_unidade || '-'})`,
       r.unidades?.regioes?.nome || '-',
-      r.data_execucao ? new Date(r.data_execucao).toLocaleDateString('pt-BR') : '-',
+      r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-',
       r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-',
       r.status_validacao === 'APROVADA' ? 'Aprovada'
         : r.status_validacao === 'REJEITADA' ? 'Rejeitada' : 'Pendente',
@@ -114,20 +168,25 @@ const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any) => {
     theme: 'striped',
     headStyles: { fillColor: [0, 102, 204] },
     margin: { left: 14, right: 14 },
-    didDrawCell: (data: any) => {
-      // Colorir coluna de status
-      if (data.column.index === 4 && data.section === 'body') {
-        const val = data.cell.raw;
-        if (val === 'Aprovada') doc.setTextColor(0, 150, 80);
-        else if (val === 'Rejeitada') doc.setTextColor(200, 0, 0);
-        else doc.setTextColor(180, 120, 0);
+
+    // Rodapé em cada página
+    didDrawPage: (data: any) => {
+      const rodape = configs.rodape_pdf ||
+        (configs.numero_contrato ? `Contrato Nº ${configs.numero_contrato}` : '');
+      if (rodape) {
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(rodape, 14, doc.internal.pageSize.getHeight() - 8);
       }
+      const pagina = `Página ${data.pageNumber}`;
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(pagina, pageWidth - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
     },
   });
 
   const periodo2 = filtros.data_inicio && filtros.data_fim
-    ? `_${filtros.data_inicio}_a_${filtros.data_fim}`
-    : '';
+    ? `_${filtros.data_inicio}_a_${filtros.data_fim}` : '';
   doc.save(`relatorio_rocadas${periodo2}.pdf`);
 };
 
@@ -136,9 +195,7 @@ const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any) => {
 // ============================================================
 export const RelatoriosPage: React.FC = () => {
   const hoje = new Date().toISOString().split('T')[0];
-  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
+  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const [filtros, setFiltros] = useState<Filtros>({
     data_inicio: trintaDiasAtras,
@@ -149,6 +206,18 @@ export const RelatoriosPage: React.FC = () => {
 
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
 
+  // Buscar configurações
+  const { data: configs = {} } = useQuery<Configs>({
+    queryKey: ['configuracoes'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('configuracoes')
+        .select('cabecalho_pdf, rodape_pdf, nome_secretaria, logo_url, nome_empresa, numero_contrato')
+        .single();
+      return data || {};
+    },
+  });
+
   const { data: unidades } = useUnidades();
   const { data: rocadas, isLoading } = useHistorico({
     unidade_id: filtros.unidade_id || undefined,
@@ -157,32 +226,25 @@ export const RelatoriosPage: React.FC = () => {
     data_fim: filtros.data_fim || undefined,
   });
 
-  // Resumo
   const resumo = {
-    total: rocadas?.length || 0,
+    total:     rocadas?.length || 0,
     aprovadas: rocadas?.filter((r) => r.status_validacao === 'APROVADA').length || 0,
     pendentes: rocadas?.filter((r) => r.status_validacao === 'PENDENTE').length || 0,
-    rejeitadas: rocadas?.filter((r) => r.status_validacao === 'REJEITADA').length || 0,
+    rejeitadas:rocadas?.filter((r) => r.status_validacao === 'REJEITADA').length || 0,
   };
 
   const handleExportarExcel = async () => {
     if (!rocadas?.length) return;
     setExportando('excel');
-    try {
-      await exportarExcel(rocadas, filtros);
-    } finally {
-      setExportando(null);
-    }
+    try { await exportarExcel(rocadas, filtros, configs); }
+    finally { setExportando(null); }
   };
 
   const handleExportarPDF = async () => {
     if (!rocadas?.length) return;
     setExportando('pdf');
-    try {
-      await exportarPDF(rocadas, filtros, resumo);
-    } finally {
-      setExportando(null);
-    }
+    try { await exportarPDF(rocadas, filtros, resumo, configs); }
+    finally { setExportando(null); }
   };
 
   return (
@@ -194,24 +256,29 @@ export const RelatoriosPage: React.FC = () => {
           <p className="text-gray-500 text-sm mt-1">Exporte dados de roçadas em Excel ou PDF</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={handleExportarExcel}
+          <button onClick={handleExportarExcel}
             disabled={!rocadas?.length || exportando !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-          >
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium">
             <FileSpreadsheet size={16} />
             {exportando === 'excel' ? 'Gerando...' : 'Exportar Excel'}
           </button>
-          <button
-            onClick={handleExportarPDF}
+          <button onClick={handleExportarPDF}
             disabled={!rocadas?.length || exportando !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-          >
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium">
             <FileText size={16} />
             {exportando === 'pdf' ? 'Gerando...' : 'Exportar PDF'}
           </button>
         </div>
       </div>
+
+      {/* Configurações aplicadas */}
+      {(configs.cabecalho_pdf || configs.nome_secretaria) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700 flex items-center gap-2">
+          <FileText size={14} />
+          PDF com cabeçalho: <strong>{configs.cabecalho_pdf || configs.nome_secretaria}</strong>
+          {configs.rodape_pdf && <> · Rodapé: <strong>{configs.rodape_pdf}</strong></>}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -222,42 +289,30 @@ export const RelatoriosPage: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Data Início</label>
-            <input
-              type="date"
-              value={filtros.data_inicio}
+            <input type="date" value={filtros.data_inicio}
               onChange={(e) => setFiltros({ ...filtros, data_inicio: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Data Fim</label>
-            <input
-              type="date"
-              value={filtros.data_fim}
+            <input type="date" value={filtros.data_fim}
               onChange={(e) => setFiltros({ ...filtros, data_fim: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unidade</label>
-            <select
-              value={filtros.unidade_id}
+            <select value={filtros.unidade_id}
               onChange={(e) => setFiltros({ ...filtros, unidade_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Todas</option>
-              {unidades?.map((u) => (
-                <option key={u.id} value={u.id}>{u.nome}</option>
-              ))}
+              {unidades?.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-            <select
-              value={filtros.status}
+            <select value={filtros.status}
               onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Todos</option>
               <option value="APROVADA">Aprovada</option>
               <option value="PENDENTE">Pendente</option>
@@ -270,9 +325,9 @@ export const RelatoriosPage: React.FC = () => {
       {/* Cards de Resumo */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total', value: resumo.total, cor: 'blue' },
-          { label: 'Aprovadas', value: resumo.aprovadas, cor: 'emerald' },
-          { label: 'Pendentes', value: resumo.pendentes, cor: 'yellow' },
+          { label: 'Total',      value: resumo.total,      cor: 'blue' },
+          { label: 'Aprovadas',  value: resumo.aprovadas,  cor: 'emerald' },
+          { label: 'Pendentes',  value: resumo.pendentes,  cor: 'yellow' },
           { label: 'Rejeitadas', value: resumo.rejeitadas, cor: 'red' },
         ].map((item) => (
           <div key={item.label} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -285,12 +340,8 @@ export const RelatoriosPage: React.FC = () => {
       {/* Tabela */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">
-            Registros encontrados
-          </h2>
-          {rocadas?.length ? (
-            <span className="text-xs text-gray-400">{rocadas.length} registro(s)</span>
-          ) : null}
+          <h2 className="text-sm font-semibold text-gray-700">Registros encontrados</h2>
+          {rocadas?.length ? <span className="text-xs text-gray-400">{rocadas.length} registro(s)</span> : null}
         </div>
 
         {isLoading ? (
@@ -307,11 +358,9 @@ export const RelatoriosPage: React.FC = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Unidade</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Região</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Executada</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Registrada</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  {['Unidade','Região','Executada','Registrada','Status'].map(h => (
+                    <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -321,26 +370,18 @@ export const RelatoriosPage: React.FC = () => {
                       <p className="text-sm font-medium text-gray-900">{r.unidades?.nome}</p>
                       <p className="text-xs text-gray-400">{r.unidades?.codigo_unidade}</p>
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{r.unidades?.regioes?.nome || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {r.unidades?.regioes?.nome || '-'}
+                      {r.data_execucao ? new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {r.data_execucao
-                        ? new Date(r.data_execucao).toLocaleDateString('pt-BR')
-                        : '-'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {r.created_at
-                        ? new Date(r.created_at).toLocaleDateString('pt-BR')
-                        : '-'}
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '-'}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        r.status_validacao === 'APROVADA'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : r.status_validacao === 'REJEITADA'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
+                        r.status_validacao === 'APROVADA' ? 'bg-emerald-100 text-emerald-700'
+                        : r.status_validacao === 'REJEITADA' ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-700'
                       }`}>
                         {r.status_validacao === 'APROVADA' ? 'Aprovada'
                           : r.status_validacao === 'REJEITADA' ? 'Rejeitada' : 'Pendente'}
