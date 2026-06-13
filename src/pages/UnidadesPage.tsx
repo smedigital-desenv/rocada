@@ -36,6 +36,24 @@ const calcularDias = (ultima_rocada?: string) => {
   return Math.floor((Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24));
 };
 
+const calcularProximaRocada = (
+  ultima_rocada: string | null,
+  prazo: number,
+  tolAntes: number,
+  tolDepois: number
+): string => {
+  if (!ultima_rocada) return '-';
+  const ultima = new Date(ultima_rocada + 'T00:00:00');
+  const addDias = (d: Date, dias: number) => {
+    const r = new Date(d);
+    r.setDate(r.getDate() + dias);
+    return r.toLocaleDateString('pt-BR');
+  };
+  const inicio = addDias(ultima, prazo - tolAntes);
+  const fim    = addDias(ultima, prazo + tolDepois);
+  return `${inicio} a ${fim}`;
+};
+
 // ============================================================
 // CONFIG DE SITUAÇÃO
 // ============================================================
@@ -359,7 +377,7 @@ export const UnidadesPage: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {['Unidade','Região','Última Roçada','Dias','Situação'].map(h => (
+                {['Unidade','Região','Última Roçada','Próxima Roçada','Dias','Situação'].map(h => (
                   <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
                 ))}
               </tr>
@@ -381,6 +399,9 @@ export const UnidadesPage: React.FC = () => {
                       {unidade.ultima_rocada
                         ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
                         : <span className="text-gray-400">Nunca</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {calcularProximaRocada(unidade.ultima_rocada, prazo, tolAntes, tolDepois)}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-sm font-medium ${
