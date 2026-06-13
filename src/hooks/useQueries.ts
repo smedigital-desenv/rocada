@@ -426,3 +426,91 @@ export const useCriarUnidade = () => {
     },
   });
 };
+
+// ============================================
+// MUTATIONS - EDITAR ROÇADA (apenas PENDENTE)
+// ============================================
+export const useEditarRocada = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, unidade_id, data_execucao, observacao_empresa }: {
+      id: string;
+      unidade_id: string;
+      data_execucao: string;
+      observacao_empresa?: string;
+    }) => {
+      const { data: rocada } = await supabase
+        .from('rocadas')
+        .select('status_validacao')
+        .eq('id', id)
+        .single();
+
+      if (rocada?.status_validacao !== 'PENDENTE') {
+        throw new Error('Apenas roçadas pendentes podem ser editadas.');
+      }
+
+      const { error } = await supabase
+        .from('rocadas')
+        .update({ data_execucao, observacao_empresa })
+        .eq('id', id);
+
+      if (error) {
+        if (error.code === '23505' || error.message.includes('rocadas_unidade_data_unico')) {
+          throw new Error('Já existe uma roçada registrada nesta unidade nesta data.');
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rocadas'] });
+      queryClient.invalidateQueries({ queryKey: ['historico'] });
+    },
+  });
+};
+
+// ============================================
+// MUTATIONS - DELETAR ROÇADA (apenas PENDENTE)
+// ============================================
+export const useDeletarRocada = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, unidade_id }: { id: string; unidade_id: string }) => {
+      const { data: rocada } = await supabase
+        .from('rocadas')
+        .select('status_validacao')
+        .eq('id', id)
+        .single();
+
+      if (rocada?.status_validacao !== 'PENDENTE') {
+        throw new Error('Apenas roçadas pendentes podem ser excluídas.');
+      }
+
+      const { error } = await supabase
+        .from('rocadas')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Se não há mais pendentes, volta status da unidade para EM_DIA
+      const { data: outrasPendentes } = await supabase
+        .from('rocadas')
+        .select('id')
+        .eq('unidade_id', unidade_id)
+        .eq('status_validacao', 'PENDENTE');
+
+      if (!outrasPendentes?.length) {
+        await supabase
+          .from('unidades')
+          .update({ situacao_operacional: 'EM_DIA' })
+          .eq('id', unidade_id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rocadas'] });
+      queryClient.invalidateQueries({ queryKey: ['unidades'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historico'] });
+    },
+  });
+};
