@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Users, Settings, CheckCircle, Trash2, AlertCircle,
-  Clock, Building2, FileText, MapPin, Save, Pencil, X
+  Clock, Building2, FileText, MapPin, Save, Pencil, X, Upload
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -230,7 +230,10 @@ const SecaoEmpresa: React.FC<{ configs: any }> = ({ configs }) => {
 const SecaoRelatorios: React.FC<{ configs: any }> = ({ configs }) => {
   const [form, setForm] = useState({ nome_secretaria: '', cabecalho_pdf: '', rodape_pdf: '', logo_url: '' });
   const [sucesso, setSucesso] = useState(false);
+  const [uploadando, setUploadando] = useState(false);
+  const [erroUpload, setErroUpload] = useState('');
   const salvar = useSalvarConfiguracoes();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (configs) {
@@ -247,6 +250,50 @@ const SecaoRelatorios: React.FC<{ configs: any }> = ({ configs }) => {
     await salvar.mutateAsync(form);
     setSucesso(true);
     setTimeout(() => setSucesso(false), 3000);
+  };
+
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo e tamanho
+    const tiposPermitidos = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp'];
+    if (!tiposPermitidos.includes(file.type)) {
+      setErroUpload('Formato não suportado. Use PNG, JPG ou SVG.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setErroUpload('Arquivo muito grande. Máximo 2MB.');
+      return;
+    }
+
+    setUploadando(true);
+    setErroUpload('');
+    try {
+      const ext = file.name.split('.').pop();
+      const fileName = `logo_sme.${ext}`;
+
+      const { data, error } = await supabase.storage
+        .from('logos')
+        .upload(fileName, file, { upsert: true, cacheControl: '3600' });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos')
+        .getPublicUrl(data.path);
+
+      setForm((prev) => ({ ...prev, logo_url: publicUrl }));
+    } catch (err: any) {
+      setErroUpload(err.message || 'Erro ao fazer upload do logo');
+    } finally {
+      setUploadando(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoverLogo = () => {
+    setForm((prev) => ({ ...prev, logo_url: '' }));
   };
 
   return (
@@ -278,18 +325,69 @@ const SecaoRelatorios: React.FC<{ configs: any }> = ({ configs }) => {
             placeholder="Ex: Contrato Nº 001/2026 — Empresa XYZ"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        {/* Logo */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">URL do Logo</label>
-          <input type="url" value={form.logo_url}
-            onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-            placeholder="https://exemplo.com/logo.png"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label className="block text-sm font-medium text-gray-700 mb-2">Logo</label>
+
+          {/* Preview do logo atual */}
           {form.logo_url && (
-            <img src={form.logo_url} alt="Preview logo"
-              className="mt-2 h-10 object-contain rounded border border-gray-200 p-1"
-              onError={(e) => (e.currentTarget.style.display = 'none')} />
+            <div className="flex items-center gap-3 mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <img src={form.logo_url} alt="Logo atual"
+                className="h-12 object-contain"
+                onError={(e) => (e.currentTarget.style.display = 'none')} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 truncate">{form.logo_url}</p>
+              </div>
+              <button onClick={handleRemoverLogo}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded transition-colors">
+                <X size={12} /> Remover
+              </button>
+            </div>
           )}
-          <p className="text-xs text-gray-400 mt-1">Cole a URL de uma imagem hospedada online</p>
+
+          {/* Upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+            onChange={handleUploadLogo}
+            className="hidden"
+          />
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadando}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {uploadando ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Upload size={15} /> Fazer upload do logo
+                </>
+              )}
+            </button>
+          </div>
+
+          {erroUpload && (
+            <p className="text-xs text-red-600 mt-1">{erroUpload}</p>
+          )}
+
+          {/* Alternativa: URL manual */}
+          <div className="mt-3">
+            <p className="text-xs text-gray-500 mb-1">Ou cole uma URL de imagem hospedada online:</p>
+            <input type="url" value={form.logo_url}
+              onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+              placeholder="https://exemplo.com/logo.png"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <p className="text-xs text-gray-400 mt-1">PNG, JPG ou SVG · Máximo 2MB</p>
         </div>
       </div>
 
