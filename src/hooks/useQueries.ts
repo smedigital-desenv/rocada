@@ -11,7 +11,9 @@ import {
   ValidarRocadaRequest,
 } from '../types';
 
-// Função auxiliar para calcular situação dinamicamente
+// ============================================
+// HELPER - Cálculo dinâmico de situação
+// ============================================
 const calcularSituacaoDinamica = (
   u: { situacao_operacional: string; ultima_rocada: string | null },
   prazo: number,
@@ -32,15 +34,11 @@ const calcularSituacaoDinamica = (
 // ============================================
 // QUERIES - REGIOES
 // ============================================
-
 export const useRegioes = () => {
   return useQuery({
     queryKey: ['regioes'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('regioes')
-        .select('*')
-        .order('nome');
+      const { data, error } = await supabase.from('regioes').select('*').order('nome');
       if (error) throw error;
       return data as Regiao[];
     },
@@ -50,7 +48,6 @@ export const useRegioes = () => {
 // ============================================
 // QUERIES - UNIDADES
 // ============================================
-
 export const useUnidades = (filtros?: FiltroUnidades) => {
   return useQuery({
     queryKey: ['unidades', filtros],
@@ -71,20 +68,21 @@ export const useUnidades = (filtros?: FiltroUnidades) => {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Buscar quais unidades têm roçadas pendentes
+      // Buscar roçadas pendentes com data de execução
       const { data: pendentes } = await supabase
         .from('rocadas')
-        .select('unidade_id')
+        .select('unidade_id, data_execucao')
         .eq('status_validacao', 'PENDENTE');
 
-      const idsComPendente = new Set(
-        pendentes?.map((p) => p.unidade_id) || []
+      // Mapa: unidade_id → data_execucao da roçada pendente
+      const mapaPendentes = new Map(
+        pendentes?.map((p) => [p.unidade_id, p.data_execucao]) || []
       );
 
-      // Adicionar flag tem_pendente em cada unidade
       return (data as any[]).map((u) => ({
         ...u,
-        tem_pendente: idsComPendente.has(u.id),
+        tem_pendente: mapaPendentes.has(u.id),
+        data_pendente: mapaPendentes.get(u.id) || null,
       }));
     },
   });
@@ -109,7 +107,6 @@ export const useUnidade = (id: string) => {
 // ============================================
 // QUERIES - ROCADAS
 // ============================================
-
 export const useRocadasPendentes = () => {
   return useQuery({
     queryKey: ['rocadas', 'pendentes'],
@@ -118,7 +115,7 @@ export const useRocadasPendentes = () => {
         .from('rocadas')
         .select('*, unidades(id, nome, codigo_unidade)')
         .eq('status_validacao', 'PENDENTE')
-        .order('data_registro', { ascending: true });
+        .order('created_at', { ascending: true });
       if (error) throw error;
       return data as any[];
     },
@@ -161,7 +158,6 @@ export const useRocadaPendenteUnidade = (unidadeId: string) => {
 // ============================================
 // QUERIES - HISTORICO
 // ============================================
-
 export const useHistorico = (filtros?: {
   unidade_id?: string;
   status?: string;
@@ -189,20 +185,17 @@ export const useHistorico = (filtros?: {
 };
 
 // ============================================
-// QUERIES - DASHBOARD (com cálculo dinâmico)
+// QUERIES - DASHBOARD (cálculo dinâmico + roçadas pendentes reais)
 // ============================================
-
 export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['dashboard', 'stats'],
     queryFn: async () => {
-      // Buscar unidades com ultima_rocada para cálculo dinâmico
       const { data: unidades, error } = await supabase
         .from('unidades')
-        .select('situacao_operacional, ativa, ultima_rocada');
+        .select('id, situacao_operacional, ativa, ultima_rocada');
       if (error) throw error;
 
-      // Buscar configurações de prazo
       const { data: configs } = await supabase
         .from('configuracoes')
         .select('prazo_dias, tolerancia_antes, tolerancia_depois')
@@ -212,15 +205,28 @@ export const useDashboardStats = () => {
       const tolAntes  = configs?.tolerancia_antes  ?? 7;
       const tolDepois = configs?.tolerancia_depois ?? 7;
 
+      // Buscar unidades com roçadas pendentes reais no banco
+      const { data: pendentes } = await supabase
+        .from('rocadas')
+        .select('unidade_id')
+        .eq('status_validacao', 'PENDENTE');
+
+      const idsComPendente = new Set(pendentes?.map((p) => p.unidade_id) || []);
+
+      const calcSit = (u: any): string => {
+        if (idsComPendente.has(u.id)) return 'PENDENCIA_SME';
+        return calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois);
+      };
+
       const ativas = unidades?.filter((u) => u.ativa) || [];
 
       const stats: DashboardStats = {
-        total_unidades:    ativas.length,
-        em_dia:            ativas.filter((u) => calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois) === 'EM_DIA').length,
-        atencao:           ativas.filter((u) => calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois) === 'ATENCAO').length,
-        critico:           ativas.filter((u) => calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois) === 'CRITICO').length,
-        pendente_validacao:ativas.filter((u) => calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois) === 'PENDENCIA_SME').length,
-        inativas:          unidades?.filter((u) => !u.ativa).length || 0,
+        total_unidades:     ativas.length,
+        em_dia:             ativas.filter((u) => calcSit(u) === 'EM_DIA').length,
+        atencao:            ativas.filter((u) => calcSit(u) === 'ATENCAO').length,
+        critico:            ativas.filter((u) => calcSit(u) === 'CRITICO').length,
+        pendente_validacao: ativas.filter((u) => calcSit(u) === 'PENDENCIA_SME').length,
+        inativas:           unidades?.filter((u) => !u.ativa).length || 0,
       };
 
       return stats;
@@ -234,12 +240,11 @@ export const useDashboardCharts = () => {
     queryFn: async () => {
       const { data: unidades } = await supabase
         .from('unidades')
-        .select('situacao_operacional, regiao_id, ultima_rocada')
+        .select('id, situacao_operacional, regiao_id, ultima_rocada')
         .eq('ativa', true);
 
       if (!unidades) throw new Error('Erro ao buscar dados');
 
-      // Buscar configs para cálculo dinâmico
       const { data: configs } = await supabase
         .from('configuracoes')
         .select('prazo_dias, tolerancia_antes, tolerancia_depois')
@@ -249,10 +254,22 @@ export const useDashboardCharts = () => {
       const tolAntes  = configs?.tolerancia_antes  ?? 7;
       const tolDepois = configs?.tolerancia_depois ?? 7;
 
-      // Distribuição por situação (dinâmica)
+      // Roçadas pendentes reais para distribuição correta
+      const { data: pendentes } = await supabase
+        .from('rocadas')
+        .select('unidade_id')
+        .eq('status_validacao', 'PENDENTE');
+
+      const idsComPendente = new Set(pendentes?.map((p) => p.unidade_id) || []);
+
+      const calcSit = (u: any): string => {
+        if (idsComPendente.has(u.id)) return 'PENDENCIA_SME';
+        return calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois);
+      };
+
       const distribuicao: Record<string, number> = {};
       unidades.forEach((u) => {
-        const sit = calcularSituacaoDinamica(u, prazo, tolAntes, tolDepois);
+        const sit = calcSit(u);
         distribuicao[sit] = (distribuicao[sit] || 0) + 1;
       });
 
@@ -278,7 +295,9 @@ export const useDashboardCharts = () => {
 
       const rocadas_por_mes: Record<string, number> = {};
       (rocadas || []).forEach((r) => {
-        const mes = new Date(r.data_execucao).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+        const mes = new Date(r.data_execucao).toLocaleDateString('pt-BR', {
+          month: 'short', year: 'numeric',
+        });
         rocadas_por_mes[mes] = (rocadas_por_mes[mes] || 0) + 1;
       });
 
@@ -294,7 +313,6 @@ export const useDashboardCharts = () => {
 // ============================================
 // QUERIES - LOGS
 // ============================================
-
 export const useLogs = (filtros?: { usuario_id?: string; acao?: string; limit?: number }) => {
   return useQuery({
     queryKey: ['logs', filtros],
@@ -314,7 +332,6 @@ export const useLogs = (filtros?: { usuario_id?: string; acao?: string; limit?: 
 // ============================================
 // MUTATIONS - ROCADAS
 // ============================================
-
 export const useCriarRocada = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -347,6 +364,7 @@ export const useCriarRocada = () => {
         throw error;
       }
 
+      // Atualizar situação da unidade (pode falhar silenciosamente se RLS bloquear)
       await supabase
         .from('unidades')
         .update({ situacao_operacional: 'PENDENCIA_SME' })
@@ -388,11 +406,16 @@ export const useValidarRocada = () => {
 
       if (payload.status === 'APROVADA') {
         const dataExecucao = rocada.data_execucao;
-        const proximaRocada = new Date(new Date(dataExecucao).getTime() + 60 * 24 * 60 * 60 * 1000)
-          .toISOString().split('T')[0];
+        const proximaRocada = new Date(
+          new Date(dataExecucao).getTime() + 60 * 24 * 60 * 60 * 1000
+        ).toISOString().split('T')[0];
         await supabase
           .from('unidades')
-          .update({ ultima_rocada: dataExecucao, proxima_rocada: proximaRocada, situacao_operacional: 'EM_DIA' })
+          .update({
+            ultima_rocada: dataExecucao,
+            proxima_rocada: proximaRocada,
+            situacao_operacional: 'EM_DIA',
+          })
           .eq('id', rocada.unidade_id);
       }
 
@@ -417,7 +440,6 @@ export const useValidarRocada = () => {
 // ============================================
 // MUTATIONS - UNIDADES
 // ============================================
-
 export const useCriarUnidade = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -439,7 +461,6 @@ export const useCriarUnidade = () => {
 // ============================================
 // MUTATIONS - EDITAR ROÇADA (apenas PENDENTE)
 // ============================================
-
 export const useEditarRocada = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -448,13 +469,16 @@ export const useEditarRocada = () => {
       data_execucao: string;
       observacao_empresa?: string;
     }) => {
-      const { data: rocada } = await supabase
+      // Verificar status atual
+      const { data: rocada, error: erroCheck } = await supabase
         .from('rocadas')
         .select('status_validacao')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (rocada?.status_validacao !== 'PENDENTE') {
+      if (erroCheck) throw erroCheck;
+      if (!rocada) throw new Error('Roçada não encontrada.');
+      if (rocada.status_validacao !== 'PENDENTE') {
         throw new Error('Apenas roçadas pendentes podem ser editadas.');
       }
 
@@ -472,6 +496,7 @@ export const useEditarRocada = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rocadas'] });
+      queryClient.invalidateQueries({ queryKey: ['unidades'] });
       queryClient.invalidateQueries({ queryKey: ['historico'] });
       queryClient.invalidateQueries({ queryKey: ['rocada_pendente'] });
     },
@@ -481,30 +506,39 @@ export const useEditarRocada = () => {
 // ============================================
 // MUTATIONS - DELETAR ROÇADA (apenas PENDENTE)
 // ============================================
-
 export const useDeletarRocada = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, unidade_id }: { id: string; unidade_id: string }) => {
-      const { data: rocada } = await supabase
+      // Verificar status atual antes de deletar
+      const { data: rocada, error: erroCheck } = await supabase
         .from('rocadas')
         .select('status_validacao')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (rocada?.status_validacao !== 'PENDENTE') {
+      if (erroCheck) throw erroCheck;
+      if (!rocada) throw new Error('Roçada não encontrada.');
+      if (rocada.status_validacao !== 'PENDENTE') {
         throw new Error('Apenas roçadas pendentes podem ser excluídas.');
       }
 
-      const { error } = await supabase.from('rocadas').delete().eq('id', id);
-      if (error) throw error;
+      // Deletar a roçada
+      const { error: erroDelete } = await supabase
+        .from('rocadas')
+        .delete()
+        .eq('id', id);
 
+      if (erroDelete) throw erroDelete;
+
+      // Verificar se ainda há outras roçadas pendentes para esta unidade
       const { data: outrasPendentes } = await supabase
         .from('rocadas')
         .select('id')
         .eq('unidade_id', unidade_id)
         .eq('status_validacao', 'PENDENTE');
 
+      // Se não há mais pendentes, volta status para EM_DIA
       if (!outrasPendentes?.length) {
         await supabase
           .from('unidades')
