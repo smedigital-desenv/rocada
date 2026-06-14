@@ -67,11 +67,25 @@ export const useUnidades = (filtros?: FiltroUnidades) => {
         );
       }
       if (filtros?.regiao_id) query = query.eq('regiao_id', filtros.regiao_id);
-      if (filtros?.situacao) query = query.eq('situacao_operacional', filtros.situacao);
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as any[];
+
+      // Buscar quais unidades têm roçadas pendentes
+      const { data: pendentes } = await supabase
+        .from('rocadas')
+        .select('unidade_id')
+        .eq('status_validacao', 'PENDENTE');
+
+      const idsComPendente = new Set(
+        pendentes?.map((p) => p.unidade_id) || []
+      );
+
+      // Adicionar flag tem_pendente em cada unidade
+      return (data as any[]).map((u) => ({
+        ...u,
+        tem_pendente: idsComPendente.has(u.id),
+      }));
     },
   });
 };
