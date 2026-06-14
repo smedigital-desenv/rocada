@@ -24,13 +24,12 @@ interface Configs {
 }
 
 // ============================================================
-// EXPORTAR EXCEL — com cabeçalho da secretaria
+// EXPORTAR EXCEL
 // ============================================================
 const exportarExcel = async (dados: any[], filtros: Filtros, configs: Configs) => {
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
 
-  // Linhas de cabeçalho
   const cabecalho = [
     [configs.cabecalho_pdf || 'Prefeitura Municipal'],
     [configs.nome_secretaria || 'Secretaria Municipal de Educação'],
@@ -40,7 +39,7 @@ const exportarExcel = async (dados: any[], filtros: Filtros, configs: Configs) =
       : ['Período: Todos os registros'],
     [`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`],
     configs.numero_contrato ? [`Contrato Nº ${configs.numero_contrato}`] : [],
-    [], // linha em branco
+    [],
     ['Unidade', 'Código', 'Região', 'Data Execução', 'Data Registro', 'Status', 'Observação Empresa', 'Observação SME'],
   ];
 
@@ -56,7 +55,6 @@ const exportarExcel = async (dados: any[], filtros: Filtros, configs: Configs) =
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([...cabecalho, ...linhasDados]);
-
   ws['!cols'] = [
     { wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
     { wch: 15 }, { wch: 12 }, { wch: 30 }, { wch: 30 },
@@ -70,7 +68,7 @@ const exportarExcel = async (dados: any[], filtros: Filtros, configs: Configs) =
 };
 
 // ============================================================
-// EXPORTAR PDF — com cabeçalho, rodapé e logo das configurações
+// EXPORTAR PDF
 // ============================================================
 const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any, configs: Configs) => {
   const { default: jsPDF } = await import('jspdf');
@@ -79,71 +77,69 @@ const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any, configs:
   const doc = new jsPDF({ orientation: 'landscape' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  // ── Cabeçalho ──
   let yPos = 14;
 
-  // Logo (se configurado)
-if (configs.logo_url) {
-  try {
-    const response = await fetch(configs.logo_url);
-    if (response.ok) {
-      const blob = await response.blob();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+  // ── Logo centralizado ──
+  if (configs.logo_url) {
+    try {
+      const response = await fetch(configs.logo_url);
+      if (response.ok) {
+        const blob = await response.blob();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
 
-      // Calcular dimensões mantendo proporção
-      const img = new Image();
-      await new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-        img.src = base64;
-      });
+        // Calcular dimensões mantendo proporção
+        const img = new Image();
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = base64;
+        });
 
-      const alturaMax = 18; // mm
-      const larguraMax = 50; // mm
-      let h = alturaMax;
-      let w = (img.naturalWidth / img.naturalHeight) * h;
-      if (w > larguraMax) {
-        w = larguraMax;
-        h = (img.naturalHeight / img.naturalWidth) * w;
+        const alturaMax = 20;
+        const larguraMax = 60;
+        let h = alturaMax;
+        let w = (img.naturalWidth / img.naturalHeight) * h;
+        if (w > larguraMax) {
+          w = larguraMax;
+          h = (img.naturalHeight / img.naturalWidth) * w;
+        }
+
+        const ext = (configs.logo_url.split('.').pop() || 'png').toUpperCase();
+        // Centralizar logo horizontalmente
+        const xLogo = (pageWidth - w) / 2;
+        doc.addImage(base64, ext as any, xLogo, yPos, w, h);
+        yPos += h + 6;
       }
+    } catch (_) {}
+  }
 
-      const ext = (configs.logo_url.split('.').pop() || 'png').toUpperCase();
-      doc.addImage(base64, ext as any, 14, yPos, w, h);
-      yPos += h + 2;
-    }
-  } catch (_) {}
-}
-
-  const xTexto = configs.logo_url ? 38 : 14;
-
-  // Nome da prefeitura/cabeçalho
+  // ── Textos do cabeçalho alinhados à esquerda ──
   doc.setFontSize(14);
   doc.setTextColor(0, 102, 204);
-  doc.text(configs.cabecalho_pdf || 'Prefeitura Municipal', xTexto, yPos + 6);
+  doc.text(configs.cabecalho_pdf || 'Prefeitura Municipal', 14, yPos);
+  yPos += 7;
 
-  // Nome da secretaria
   doc.setFontSize(11);
   doc.setTextColor(60, 60, 60);
-  doc.text(configs.nome_secretaria || 'Secretaria Municipal de Educação', xTexto, yPos + 13);
+  doc.text(configs.nome_secretaria || 'Secretaria Municipal de Educação', 14, yPos);
+  yPos += 7;
 
-  // Título do relatório
   doc.setFontSize(13);
   doc.setTextColor(0, 0, 0);
-  doc.text('Relatório de Roçadas', xTexto, yPos + 21);
+  doc.text('Relatório de Roçadas', 14, yPos);
+  yPos += 6;
 
-  yPos = configs.logo_url ? 40 : 34;
-
-  // Linha separadora
+  // ── Linha separadora ──
   doc.setDrawColor(200, 200, 200);
   doc.line(14, yPos, pageWidth - 14, yPos);
   yPos += 6;
 
-  // Período e data de geração
+  // ── Período e data ──
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   const periodo = filtros.data_inicio && filtros.data_fim
@@ -172,6 +168,7 @@ if (configs.logo_url) {
   // ── Detalhamento ──
   const posDepoisResumo = (doc as any).lastAutoTable.finalY + 8;
   doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
   doc.text('Detalhamento', 14, posDepoisResumo);
 
   autoTable(doc, {
@@ -188,8 +185,6 @@ if (configs.logo_url) {
     theme: 'striped',
     headStyles: { fillColor: [0, 102, 204] },
     margin: { left: 14, right: 14 },
-
-    // Rodapé em cada página
     didDrawPage: (data: any) => {
       const rodape = configs.rodape_pdf ||
         (configs.numero_contrato ? `Contrato Nº ${configs.numero_contrato}` : '');
@@ -198,10 +193,9 @@ if (configs.logo_url) {
         doc.setTextColor(120, 120, 120);
         doc.text(rodape, 14, doc.internal.pageSize.getHeight() - 8);
       }
-      const pagina = `Página ${data.pageNumber}`;
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text(pagina, pageWidth - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text(`Página ${data.pageNumber}`, pageWidth - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
     },
   });
 
@@ -226,7 +220,6 @@ export const RelatoriosPage: React.FC = () => {
 
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
 
-  // Buscar configurações
   const { data: configs = {} } = useQuery<Configs>({
     queryKey: ['configuracoes'],
     queryFn: async () => {
@@ -247,10 +240,10 @@ export const RelatoriosPage: React.FC = () => {
   });
 
   const resumo = {
-    total:     rocadas?.length || 0,
-    aprovadas: rocadas?.filter((r) => r.status_validacao === 'APROVADA').length || 0,
-    pendentes: rocadas?.filter((r) => r.status_validacao === 'PENDENTE').length || 0,
-    rejeitadas:rocadas?.filter((r) => r.status_validacao === 'REJEITADA').length || 0,
+    total:      rocadas?.length || 0,
+    aprovadas:  rocadas?.filter((r) => r.status_validacao === 'APROVADA').length || 0,
+    pendentes:  rocadas?.filter((r) => r.status_validacao === 'PENDENTE').length || 0,
+    rejeitadas: rocadas?.filter((r) => r.status_validacao === 'REJEITADA').length || 0,
   };
 
   const handleExportarExcel = async () => {
@@ -269,7 +262,6 @@ export const RelatoriosPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
@@ -291,7 +283,6 @@ export const RelatoriosPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Configurações aplicadas */}
       {(configs.cabecalho_pdf || configs.nome_secretaria) && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700 flex items-center gap-2">
           <FileText size={14} />
@@ -300,7 +291,6 @@ export const RelatoriosPage: React.FC = () => {
         </div>
       )}
 
-      {/* Filtros */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center gap-2 mb-4">
           <Filter size={16} className="text-gray-500" />
@@ -342,7 +332,6 @@ export const RelatoriosPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Cards de Resumo */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total',      value: resumo.total,      cor: 'blue' },
@@ -357,7 +346,6 @@ export const RelatoriosPage: React.FC = () => {
         ))}
       </div>
 
-      {/* Tabela */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">Registros encontrados</h2>
