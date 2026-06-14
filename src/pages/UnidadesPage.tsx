@@ -125,9 +125,10 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
     setErroEdicao('');
     try {
       await editarRocada.mutateAsync({
-  id: editandoId!,
-  data_execucao: editForm.data_execucao,
-  observacao_empresa: editForm.observacao_empresa,
+        id: editandoId!,
+        unidade_id: unidade.id,
+        data_execucao: editForm.data_execucao,
+        observacao_empresa: editForm.observacao_empresa,
       });
       setEditandoId(null);
     } catch (err: any) {
@@ -441,12 +442,12 @@ export const UnidadesPage: React.FC = () => {
   const criarUnidade = useCriarUnidade();
 
   // Calcular situação dinamicamente e aplicar filtro
-const unidadesComSituacao = (unidades || []).map((u) => ({
-  ...u,
-  _situacao: u.tem_pendente
-    ? 'PENDENCIA_SME'
-    : calcularSituacao(u.ultima_rocada, u.situacao_operacional, prazo, tolAntes, tolDepois),
-}));
+  const unidadesComSituacao = (unidades || []).map((u) => ({
+    ...u,
+    _situacao: u.tem_pendente
+      ? 'PENDENCIA_SME'
+      : calcularSituacao(u.ultima_rocada, u.situacao_operacional, prazo, tolAntes, tolDepois),
+  }));
 
   const unidadesFiltradas = situacaoFiltro
     ? unidadesComSituacao.filter((u) => u._situacao === situacaoFiltro)
@@ -577,9 +578,22 @@ const unidadesComSituacao = (unidades || []).map((u) => ({
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
-                        <Icon size={12} />{config.label}
-                      </span>
+                      {unidade._situacao === 'PENDENCIA_SME' ? (
+                        <div className="space-y-0.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            <Clock size={12} /> Em análise pela SME
+                          </span>
+                          {unidade.data_pendente && (
+                            <p className="text-xs text-blue-500 pl-1">
+                              Roçada de {new Date(unidade.data_pendente + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
+                          <Icon size={12} />{config.label}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
