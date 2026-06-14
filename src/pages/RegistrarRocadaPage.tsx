@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, CheckCircle } from 'lucide-react';
-import { useUnidades, useCriarRocada } from '../hooks/useQueries';
+import { ClipboardList, CheckCircle, AlertTriangle } from 'lucide-react';
+import { useUnidades, useCriarRocada, useRocadaPendenteUnidade } from '../hooks/useQueries';
 
 export const RegistrarRocadaPage: React.FC = () => {
   const navigate = useNavigate();
@@ -13,6 +13,9 @@ export const RegistrarRocadaPage: React.FC = () => {
   const [observacao, setObservacao] = useState('');
   const [sucesso, setSucesso] = useState(false);
   const [erro, setErro] = useState('');
+
+  // Verifica se a unidade selecionada já tem roçada pendente
+  const { data: rocadaPendente } = useRocadaPendenteUnidade(unidadeId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +34,6 @@ export const RegistrarRocadaPage: React.FC = () => {
   };
 
   const hoje = new Date().toISOString().split('T')[0];
-  const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   if (sucesso) {
     return (
@@ -41,7 +43,8 @@ export const RegistrarRocadaPage: React.FC = () => {
             <CheckCircle className="text-emerald-600" size={32} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Roçada Registrada!</h2>
-          <p className="text-gray-500">Redirecionando para unidades...</p>
+          <p className="text-gray-500 text-sm">Aguardando validação da SME.</p>
+          <p className="text-gray-400 text-xs mt-1">Redirecionando...</p>
         </div>
       </div>
     );
@@ -68,6 +71,20 @@ export const RegistrarRocadaPage: React.FC = () => {
         {erro && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {erro}
+          </div>
+        )}
+
+        {/* Aviso de roçada pendente na unidade selecionada */}
+        {rocadaPendente && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-sm text-amber-700">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Esta unidade já possui uma roçada de{' '}
+              <strong>
+                {new Date(rocadaPendente.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}
+              </strong>{' '}
+              aguardando validação da SME. Você ainda pode registrar uma nova roçada em data diferente.
+            </span>
           </div>
         )}
 
@@ -100,11 +117,10 @@ export const RegistrarRocadaPage: React.FC = () => {
               value={dataExecucao}
               onChange={(e) => setDataExecucao(e.target.value)}
               max={hoje}
-              min={seteDiasAtras}
               required
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <p className="text-xs text-gray-400 mt-1">Data em que a roçada foi realizada (máximo 7 dias atrás)</p>
+            <p className="text-xs text-gray-400 mt-1">Data em que a roçada foi realizada</p>
           </div>
 
           <div>
@@ -120,7 +136,8 @@ export const RegistrarRocadaPage: React.FC = () => {
 
           <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-xs text-blue-700">
-              <strong>Atenção:</strong> Após o registro, a roçada ficará com status <strong>Pendente</strong> até a validação pela SME.
+              <strong>Atenção:</strong> Após o registro, a roçada ficará com status{' '}
+              <strong>Aguardando Validação</strong> até a aprovação pela SME.
             </p>
           </div>
 
