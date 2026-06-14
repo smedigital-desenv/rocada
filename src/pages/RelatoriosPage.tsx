@@ -83,21 +83,41 @@ const exportarPDF = async (dados: any[], filtros: Filtros, resumo: any, configs:
   let yPos = 14;
 
   // Logo (se configurado)
-  if (configs.logo_url) {
-    try {
+if (configs.logo_url) {
+  try {
+    const response = await fetch(configs.logo_url);
+    if (response.ok) {
+      const blob = await response.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Calcular dimensões mantendo proporção
       const img = new Image();
-      img.crossOrigin = 'anonymous';
       await new Promise((resolve) => {
         img.onload = resolve;
         img.onerror = resolve;
-        img.src = configs.logo_url!;
+        img.src = base64;
       });
-      if (img.complete && img.naturalWidth > 0) {
-        doc.addImage(img, 'PNG', 14, yPos, 20, 20);
-        yPos += 2;
+
+      const alturaMax = 18; // mm
+      const larguraMax = 50; // mm
+      let h = alturaMax;
+      let w = (img.naturalWidth / img.naturalHeight) * h;
+      if (w > larguraMax) {
+        w = larguraMax;
+        h = (img.naturalHeight / img.naturalWidth) * w;
       }
-    } catch (_) {}
-  }
+
+      const ext = (configs.logo_url.split('.').pop() || 'png').toUpperCase();
+      doc.addImage(base64, ext as any, 14, yPos, w, h);
+      yPos += h + 2;
+    }
+  } catch (_) {}
+}
 
   const xTexto = configs.logo_url ? 38 : 14;
 
