@@ -441,10 +441,12 @@ export const UnidadesPage: React.FC = () => {
   const criarUnidade = useCriarUnidade();
 
   // Calcular situação dinamicamente e aplicar filtro
-  const unidadesComSituacao = (unidades || []).map((u) => ({
-    ...u,
-    _situacao: calcularSituacao(u.ultima_rocada, u.situacao_operacional, prazo, tolAntes, tolDepois),
-  }));
+const unidadesComSituacao = (unidades || []).map((u) => ({
+  ...u,
+  _situacao: u.tem_pendente
+    ? 'PENDENCIA_SME'
+    : calcularSituacao(u.ultima_rocada, u.situacao_operacional, prazo, tolAntes, tolDepois),
+}));
 
   const unidadesFiltradas = situacaoFiltro
     ? unidadesComSituacao.filter((u) => u._situacao === situacaoFiltro)
