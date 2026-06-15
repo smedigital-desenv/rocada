@@ -59,8 +59,14 @@ const AppContent: React.FC = () => {
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
+
+      {/* ── Rota pública: Unidades acessível sem login ── */}
+      <Route element={<MainLayout />}>
+        <Route path="unidades" element={<UnidadesPage />} />
+      </Route>
+
+      {/* ── Rotas protegidas ── */}
       <Route
-        path="/"
         element={
           <ProtectedRoute>
             <MainLayout />
@@ -69,7 +75,6 @@ const AppContent: React.FC = () => {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="unidades" element={<UnidadesPage />} />
         <Route path="registrar-rocada" element={
           <EmpresaRoute><RegistrarRocadaPage /></EmpresaRoute>
         } />
@@ -84,7 +89,9 @@ const AppContent: React.FC = () => {
           <SMERoute><ConfiguracoesPage /></SMERoute>
         } />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      {/* Redireciona qualquer rota desconhecida para unidades */}
+      <Route path="*" element={<Navigate to="/unidades" replace />} />
     </Routes>
   );
 };
