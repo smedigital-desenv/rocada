@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada, useEditarRocada, useDeletarRocada } from '../hooks/useQueries';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
