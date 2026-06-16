@@ -11,6 +11,7 @@ import { ValidarRocadasPage } from './pages/ValidarRocadasPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
 import { RelatoriosPage } from './pages/RelatoriosPage';
+import { PrimeiroAcessoPage } from './pages/PrimeiroAcessoPage';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -23,8 +24,10 @@ const queryClient = new QueryClient({
   },
 });
 
+// Rota protegida — redireciona para login se não autenticado
+// Redireciona para /primeiro-acesso se for primeiro acesso
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, primeiroAcesso } = useAuth();
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -36,6 +39,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (primeiroAcesso) return <Navigate to="/primeiro-acesso" replace />;
+  return <>{children}</>;
+};
+
+// Rota exclusiva para primeiro acesso (só entra se estiver autenticado E primeiro_acesso = true)
+const PrimeiroAcessoRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, loading, primeiroAcesso } = useAuth();
+  if (loading) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!primeiroAcesso) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
 
@@ -60,12 +73,23 @@ const AppContent: React.FC = () => {
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
 
-      {/* ── Rota pública: Unidades acessível sem login ── */}
+      {/* Primeiro acesso — fora do MainLayout */}
+      <Route
+        path="/primeiro-acesso"
+        element={
+          <PrimeiroAcessoRoute>
+            <PrimeiroAcessoPage />
+          </PrimeiroAcessoRoute>
+        }
+      />
+
+      {/* Rota pública — Unidades acessível sem login */}
       <Route element={<MainLayout />}>
+        <Route index element={<Navigate to="/unidades" replace />} />
         <Route path="unidades" element={<UnidadesPage />} />
       </Route>
 
-      {/* ── Rotas protegidas ── */}
+      {/* Rotas protegidas */}
       <Route
         element={
           <ProtectedRoute>
@@ -89,7 +113,6 @@ const AppContent: React.FC = () => {
         } />
       </Route>
 
-      {/* Redireciona qualquer rota desconhecida para unidades */}
       <Route path="*" element={<Navigate to="/unidades" replace />} />
     </Routes>
   );
