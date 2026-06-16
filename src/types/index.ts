@@ -21,6 +21,7 @@ export interface Usuario {
   nome: string;
   perfil: UserProfile;
   ativo: boolean;
+  primeiro_acesso?: boolean;
 }
 
 export interface UsuarioPerfil {
@@ -70,16 +71,11 @@ export interface Unidade {
   bairro?: string;
   regiao_id: string;
   ativa: boolean;
-  
-  // Campos de controle
-  ultima_rocada?: string; // DATE
-  proxima_rocada?: string; // DATE
+  ultima_rocada?: string;
+  proxima_rocada?: string;
   situacao_operacional: SituacaoOperacional;
-  
-  // Geolocalização
   latitude?: number;
   longitude?: number;
-  
   created_at: string;
   updated_at: string;
 }
@@ -100,8 +96,8 @@ export interface DadosUnidadeComRocadas extends UnidadeComRegiao {
 export interface Rocada {
   id: string;
   unidade_id: string;
-  data_execucao: string; // DATE
-  data_registro: string; // TIMESTAMP
+  data_execucao: string;
+  data_registro: string;
   status_validacao: StatusValidacao;
   observacao_empresa?: string;
   observacao_sme?: string;
@@ -241,4 +237,6 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isSME: boolean;
   isEmpresa: boolean;
+  primeiroAcesso: boolean;
+  trocarSenha: (novaSenha: string) => Promise<void>;
 }
