@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
   Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle,
-  Clock, Building2, X, History, CalendarPlus, Pencil, Trash2, AlertOctagon
+  Clock, Building2, X, History, CalendarPlus, Pencil, Trash2, AlertOctagon, LogIn
 } from 'lucide-react';
 import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada, useEditarRocada, useDeletarRocada } from '../hooks/useQueries';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
@@ -18,14 +19,11 @@ const calcularSituacao = (
   tolAntes: number,
   tolDepois: number
 ): string => {
-  // Manter PENDENCIA_SME se estiver aguardando validação
   if (statusBanco === 'PENDENCIA_SME') return 'PENDENCIA_SME';
   if (!ultima_rocada) return 'EM_DIA';
-
   const dias = Math.floor(
     (Date.now() - new Date(ultima_rocada).getTime()) / (1000 * 60 * 60 * 24)
   );
-
   if (dias > prazo + tolDepois) return 'CRITICO';
   if (dias > prazo - tolAntes)  return 'ATENCAO';
   return 'EM_DIA';
@@ -80,13 +78,9 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
-
-  // Estado para edição inline
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ data_execucao: '', observacao_empresa: '' });
   const [erroEdicao, setErroEdicao] = useState('');
-
-  // Estado para confirmação de exclusão
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
 
   const { data: rocadas, isLoading } = useRocadasUnidade(unidade.id);
@@ -96,8 +90,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
 
   const config = situacaoConfig[unidade._situacao] || situacaoConfig.EM_DIA;
   const Icon = config.icon;
-
-  // Verificar se há roçada aguardando validação
   const rocadaPendente = rocadas?.find((r) => r.status_validacao === 'PENDENTE');
 
   const handleRegistrar = async (e: React.FormEvent) => {
@@ -148,7 +140,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 
-        {/* Cabeçalho */}
         <div className="flex items-start justify-between p-6 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{unidade.nome}</h2>
@@ -161,7 +152,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
           </button>
         </div>
 
-        {/* Cards de info */}
         <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-gray-100">
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">Situação</p>
@@ -183,7 +173,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
           </div>
         </div>
 
-        {/* Abas (só EMPRESA) */}
         {isEmpresa && (
           <div className="flex border-b border-gray-100 px-6">
             <button onClick={() => setAba('historico')}
@@ -198,8 +187,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
         )}
 
         <div className="flex-1 overflow-y-auto">
-
-          {/* Banner de roçada aguardando validação */}
           {rocadaPendente && aba === 'historico' && (
             <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-700">
               <AlertOctagon size={16} className="shrink-0" />
@@ -211,14 +198,12 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
             </div>
           )}
 
-          {/* Mensagem de sucesso */}
           {sucesso && (
             <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-sm text-emerald-700">
               <CheckCircle size={16} />{sucesso}
             </div>
           )}
 
-          {/* Erro geral */}
           {erro && (
             <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
               <X size={16} />{erro}
@@ -226,7 +211,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
             </div>
           )}
 
-          {/* Aba Histórico */}
           {aba === 'historico' && (
             isLoading ? (
               <div className="flex items-center justify-center h-32">
@@ -252,15 +236,12 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                       const st = statusRocadaConfig[r.status_validacao] || statusRocadaConfig.PENDENTE;
                       const isPendente = r.status_validacao === 'PENDENTE';
 
-                      // Linha em modo edição
                       if (editandoId === r.id) {
                         return (
                           <tr key={r.id} className="bg-blue-50">
                             <td colSpan={isEmpresa ? 5 : 4} className="px-6 py-3">
                               <form onSubmit={handleEditar} className="space-y-2">
-                                {erroEdicao && (
-                                  <p className="text-xs text-red-600">{erroEdicao}</p>
-                                )}
+                                {erroEdicao && <p className="text-xs text-red-600">{erroEdicao}</p>}
                                 <div className="flex gap-2 items-end">
                                   <div>
                                     <label className="block text-xs text-gray-600 mb-1">Data de Execução</label>
@@ -291,7 +272,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                         );
                       }
 
-                      // Linha de confirmação de exclusão
                       if (deletandoId === r.id) {
                         return (
                           <tr key={r.id} className="bg-red-50">
@@ -301,8 +281,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                                 <span className="text-sm text-red-700 flex-1">
                                   Excluir roçada de <strong>{new Date(r.data_execucao + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>?
                                 </span>
-                                <button onClick={() => handleDeletar(r.id)}
-                                  disabled={deletarRocada.isPending}
+                                <button onClick={() => handleDeletar(r.id)} disabled={deletarRocada.isPending}
                                   className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 disabled:opacity-50">
                                   {deletarRocada.isPending ? 'Excluindo...' : 'Confirmar'}
                                 </button>
@@ -339,20 +318,14 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                                   <button
                                     onClick={() => {
                                       setEditandoId(r.id);
-                                      setEditForm({
-                                        data_execucao: r.data_execucao,
-                                        observacao_empresa: r.observacao_empresa || '',
-                                      });
+                                      setEditForm({ data_execucao: r.data_execucao, observacao_empresa: r.observacao_empresa || '' });
                                       setErroEdicao('');
                                     }}
-                                    className="text-blue-500 hover:text-blue-700 transition-colors"
-                                    title="Editar">
+                                    className="text-blue-500 hover:text-blue-700 transition-colors" title="Editar">
                                     <Pencil size={15} />
                                   </button>
-                                  <button
-                                    onClick={() => setDeletandoId(r.id)}
-                                    className="text-red-400 hover:text-red-600 transition-colors"
-                                    title="Excluir">
+                                  <button onClick={() => setDeletandoId(r.id)}
+                                    className="text-red-400 hover:text-red-600 transition-colors" title="Excluir">
                                     <Trash2 size={15} />
                                   </button>
                                 </div>
@@ -368,7 +341,6 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
             )
           )}
 
-          {/* Aba Registrar */}
           {aba === 'registrar' && isEmpresa && (
             <form onSubmit={handleRegistrar} className="p-6 space-y-4">
               {rocadaPendente && (
@@ -413,7 +385,8 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
 // PÁGINA PRINCIPAL
 // ============================================================
 export const UnidadesPage: React.FC = () => {
-  const { isSME } = useAuth();
+  const { isSME, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState('');
@@ -423,7 +396,6 @@ export const UnidadesPage: React.FC = () => {
   const [formData, setFormData] = useState({ codigo_unidade: '', nome: '', regiao_id: '' });
   const [erro, setErro] = useState('');
 
-  // Buscar configurações de prazo
   const { data: configsPrazo } = useQuery({
     queryKey: ['configuracoes'],
     queryFn: async () => {
@@ -440,7 +412,6 @@ export const UnidadesPage: React.FC = () => {
   const { data: regioes } = useRegioes();
   const criarUnidade = useCriarUnidade();
 
-  // Calcular situação dinamicamente e aplicar filtro
   const unidadesComSituacao = (unidades || []).map((u) => ({
     ...u,
     _situacao: u.tem_pendente
@@ -474,12 +445,23 @@ export const UnidadesPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Unidades Escolares</h1>
           <p className="text-gray-500 text-sm mt-1">{unidadesFiltradas.length} unidades encontradas</p>
         </div>
-        {isSME && (
-          <button onClick={() => setModalNovaUnidade(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-            <Plus size={16} /> Nova Unidade
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Botão de login para usuários não autenticados */}
+          {!isAuthenticated && (
+            <button
+              onClick={() => navigate('/login')}
+              className="flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium">
+              <LogIn size={16} /> Entrar no Sistema
+            </button>
+          )}
+          {/* Botão de nova unidade apenas para SME */}
+          {isSME && (
+            <button onClick={() => setModalNovaUnidade(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+              <Plus size={16} /> Nova Unidade
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Busca e filtros */}
@@ -602,12 +584,10 @@ export const UnidadesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal detalhe */}
       {unidadeSelecionada && (
         <ModalDetalhe unidade={unidadeSelecionada} onClose={() => setUnidadeSelecionada(null)} />
       )}
 
-      {/* Modal nova unidade */}
       {modalNovaUnidade && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
