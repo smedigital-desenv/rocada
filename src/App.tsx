@@ -73,7 +73,7 @@ const AppContent: React.FC = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<Navigate to="/unidades" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="registrar-rocada" element={
           <EmpresaRoute><RegistrarRocadaPage /></EmpresaRoute>
