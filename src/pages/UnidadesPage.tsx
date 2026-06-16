@@ -447,14 +447,7 @@ export const UnidadesPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           {/* Botão de login para usuários não autenticados */}
-          {!isAuthenticated && (
-            <button
-              onClick={() => navigate('/login')}
-              className="flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium">
-              <LogIn size={16} /> Entrar no Sistema
-            </button>
-          )}
-          {/* Botão de nova unidade apenas para SME */}
+                   {/* Botão de nova unidade apenas para SME */}
           {isSME && (
             <button onClick={() => setModalNovaUnidade(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
