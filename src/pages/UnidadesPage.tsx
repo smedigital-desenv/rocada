@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Search, Filter, Plus, CheckCircle, AlertTriangle, AlertCircle,
-  Clock, Building2, X, History, CalendarPlus, Pencil, Trash2, AlertOctagon, LogIn
+  Clock, Building2, X, History, CalendarPlus, Pencil, Trash2, AlertOctagon
 } from 'lucide-react';
 import { useUnidades, useRegioes, useCriarUnidade, useRocadasUnidade, useCriarRocada, useEditarRocada, useDeletarRocada } from '../hooks/useQueries';
 import { useAuth } from '../contexts/AuthContext';
@@ -385,8 +385,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
 // PÁGINA PRINCIPAL
 // ============================================================
 export const UnidadesPage: React.FC = () => {
-  const { isSME, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+const { isSME } = useAuth();
   const [search, setSearch] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState('');
