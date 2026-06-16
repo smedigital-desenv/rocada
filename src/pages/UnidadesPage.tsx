@@ -46,9 +46,7 @@ const calcularProximaRocada = (
     r.setDate(r.getDate() + dias);
     return r.toLocaleDateString('pt-BR');
   };
-  const inicio = addDias(ultima, prazo - tolAntes);
-  const fim    = addDias(ultima, prazo + tolDepois);
-  return `${inicio} a ${fim}`;
+  return `${addDias(ultima, prazo - tolAntes)} a ${addDias(ultima, prazo + tolDepois)}`;
 };
 
 // ============================================================
@@ -96,55 +94,35 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
     setErro('');
     if (!dataExecucao) { setErro('Informe a data de execução'); return; }
     try {
-      await criarRocada.mutateAsync({
-        unidade_id: unidade.id,
-        data_execucao: dataExecucao,
-        observacao_empresa: observacao,
-      });
+      await criarRocada.mutateAsync({ unidade_id: unidade.id, data_execucao: dataExecucao, observacao_empresa: observacao });
       setSucesso('Roçada registrada com sucesso!');
-      setDataExecucao('');
-      setObservacao('');
-      setAba('historico');
+      setDataExecucao(''); setObservacao(''); setAba('historico');
       setTimeout(() => setSucesso(''), 5000);
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao registrar roçada');
-    }
+    } catch (err: any) { setErro(err.message || 'Erro ao registrar roçada'); }
   };
 
   const handleEditar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErroEdicao('');
+    e.preventDefault(); setErroEdicao('');
     try {
-      await editarRocada.mutateAsync({
-        id: editandoId!,
-        data_execucao: editForm.data_execucao,
-        observacao_empresa: editForm.observacao_empresa,
-      });
+      await editarRocada.mutateAsync({ id: editandoId!, data_execucao: editForm.data_execucao, observacao_empresa: editForm.observacao_empresa });
       setEditandoId(null);
-    } catch (err: any) {
-      setErroEdicao(err.message || 'Erro ao editar roçada');
-    }
+    } catch (err: any) { setErroEdicao(err.message || 'Erro ao editar roçada'); }
   };
 
   const handleDeletar = async (id: string) => {
     try {
       await deletarRocada.mutateAsync({ id, unidade_id: unidade.id });
       setDeletandoId(null);
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao excluir roçada');
-    }
+    } catch (err: any) { setErro(err.message || 'Erro ao excluir roçada'); }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-
         <div className="flex items-start justify-between p-6 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{unidade.nome}</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {unidade.codigo_unidade} · {unidade.regioes?.nome || 'Sem região'}
-            </p>
+            <p className="text-sm text-gray-500 mt-0.5">{unidade.codigo_unidade} · {unidade.regioes?.nome || 'Sem região'}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X size={18} className="text-gray-500" />
@@ -161,9 +139,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">Última Roçada</p>
             <p className="text-sm font-semibold text-gray-800">
-              {unidade.ultima_rocada
-                ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR')
-                : 'Nunca'}
+              {unidade.ultima_rocada ? new Date(unidade.ultima_rocada + 'T00:00:00').toLocaleDateString('pt-BR') : 'Nunca'}
             </p>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
@@ -196,13 +172,11 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
               </span>
             </div>
           )}
-
           {sucesso && (
             <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-sm text-emerald-700">
               <CheckCircle size={16} />{sucesso}
             </div>
           )}
-
           {erro && (
             <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
               <X size={16} />{erro}
@@ -314,12 +288,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
                             <td className="px-6 py-3">
                               {isPendente && (
                                 <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setEditandoId(r.id);
-                                      setEditForm({ data_execucao: r.data_execucao, observacao_empresa: r.observacao_empresa || '' });
-                                      setErroEdicao('');
-                                    }}
+                                  <button onClick={() => { setEditandoId(r.id); setEditForm({ data_execucao: r.data_execucao, observacao_empresa: r.observacao_empresa || '' }); setErroEdicao(''); }}
                                     className="text-blue-500 hover:text-blue-700 transition-colors" title="Editar">
                                     <Pencil size={15} />
                                   </button>
@@ -350,11 +319,8 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
               )}
               {erro && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{erro}</div>}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Data de Execução <span className="text-red-500">*</span>
-                </label>
-                <input type="date" value={dataExecucao}
-                  max={new Date().toISOString().split('T')[0]}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Execução <span className="text-red-500">*</span></label>
+                <input type="date" value={dataExecucao} max={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setDataExecucao(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -384,7 +350,7 @@ const ModalDetalhe: React.FC<{ unidade: any; onClose: () => void }> = ({ unidade
 // PÁGINA PRINCIPAL
 // ============================================================
 export const UnidadesPage: React.FC = () => {
-const { isSME } = useAuth();
+  const { isSME, isAuthenticated } = useAuth();
   const [search, setSearch] = useState('');
   const [regiaoFiltro, setRegiaoFiltro] = useState('');
   const [situacaoFiltro, setSituacaoFiltro] = useState('');
@@ -436,6 +402,10 @@ const { isSME } = useAuth();
     }
   };
 
+  // Colunas da tabela — Dias e Situação só para logados
+  const colunas = ['Unidade', 'Região', 'Última Roçada', 'Próxima Roçada',
+    ...(isAuthenticated ? ['Dias', 'Situação'] : [])];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -444,8 +414,6 @@ const { isSME } = useAuth();
           <p className="text-gray-500 text-sm mt-1">{unidadesFiltradas.length} unidades encontradas</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Botão de login para usuários não autenticados */}
-                   {/* Botão de nova unidade apenas para SME */}
           {isSME && (
             <button onClick={() => setModalNovaUnidade(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
@@ -480,17 +448,20 @@ const { isSME } = useAuth();
                 {regioes?.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Situação</label>
-              <select value={situacaoFiltro} onChange={(e) => setSituacaoFiltro(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Todas as situações</option>
-                <option value="EM_DIA">Em Dia</option>
-                <option value="ATENCAO">Atenção</option>
-                <option value="CRITICO">Crítico</option>
-                <option value="PENDENCIA_SME">Pendência SME</option>
-              </select>
-            </div>
+            {/* Filtro de situação só para logados */}
+            {isAuthenticated && (
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Situação</label>
+                <select value={situacaoFiltro} onChange={(e) => setSituacaoFiltro(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Todas as situações</option>
+                  <option value="EM_DIA">Em Dia</option>
+                  <option value="ATENCAO">Atenção</option>
+                  <option value="CRITICO">Crítico</option>
+                  <option value="PENDENCIA_SME">Pendência SME</option>
+                </select>
+              </div>
+            )}
             <div className="flex items-end">
               <button onClick={() => { setRegiaoFiltro(''); setSituacaoFiltro(''); }}
                 className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Limpar</button>
@@ -514,7 +485,7 @@ const { isSME } = useAuth();
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {['Unidade','Região','Última Roçada','Próxima Roçada','Dias','Situação'].map(h => (
+                {colunas.map(h => (
                   <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
                 ))}
               </tr>
@@ -525,8 +496,9 @@ const { isSME } = useAuth();
                 const Icon = config.icon;
                 const dias = calcularDias(unidade.ultima_rocada);
                 return (
-                  <tr key={unidade.id} onClick={() => setUnidadeSelecionada(unidade)}
-                    className="hover:bg-blue-50 transition-colors cursor-pointer">
+                  <tr key={unidade.id}
+                    onClick={() => isAuthenticated && setUnidadeSelecionada(unidade)}
+                    className={`transition-colors ${isAuthenticated ? 'hover:bg-blue-50 cursor-pointer' : 'cursor-default'}`}>
                     <td className="px-6 py-4">
                       <p className="text-sm font-semibold text-gray-900">{unidade.nome}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{unidade.codigo_unidade}</p>
@@ -540,33 +512,39 @@ const { isSME } = useAuth();
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {calcularProximaRocada(unidade.ultima_rocada, prazo, tolAntes, tolDepois)}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-sm font-medium ${
-                        dias === null ? 'text-gray-400' :
-                        dias > prazo + tolDepois ? 'text-red-600' :
-                        dias > prazo - tolAntes  ? 'text-amber-600' : 'text-emerald-600'
-                      }`}>
-                        {dias !== null ? `${dias} dias` : '-'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {unidade._situacao === 'PENDENCIA_SME' ? (
-                        <div className="space-y-0.5">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            <Clock size={12} /> Em análise pela SME
-                          </span>
-                          {unidade.data_pendente && (
-                            <p className="text-xs text-blue-500 pl-1">
-                              Roçada de {new Date(unidade.data_pendente + 'T00:00:00').toLocaleDateString('pt-BR')}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
-                          <Icon size={12} />{config.label}
+
+                    {/* Colunas visíveis apenas para logados */}
+                    {isAuthenticated && (
+                      <td className="px-6 py-4">
+                        <span className={`text-sm font-medium ${
+                          dias === null ? 'text-gray-400' :
+                          dias > prazo + tolDepois ? 'text-red-600' :
+                          dias > prazo - tolAntes  ? 'text-amber-600' : 'text-emerald-600'
+                        }`}>
+                          {dias !== null ? `${dias} dias` : '-'}
                         </span>
-                      )}
-                    </td>
+                      </td>
+                    )}
+                    {isAuthenticated && (
+                      <td className="px-6 py-4">
+                        {unidade._situacao === 'PENDENCIA_SME' ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                              <Clock size={12} /> Em análise pela SME
+                            </span>
+                            {unidade.data_pendente && (
+                              <p className="text-xs text-blue-500 pl-1">
+                                Roçada de {new Date(unidade.data_pendente + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
+                            <Icon size={12} />{config.label}
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
