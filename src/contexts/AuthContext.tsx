@@ -1,126 +1,106 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { AuthContextType, Usuario, UserProfile } from '../types';
-import { supabase } from '../lib/supabase';
+
+/* ============================================================================
+ * AuthContext — INTEGRAÇÃO COM O CONTROLE DE ACESSO CENTRAL (homologação/teste).
+ * ----------------------------------------------------------------------------
+ * Nesta build (develop / /rocada/teste/), o LOGIN e as PERMISSÕES vêm do
+ * Controle de Acesso CENTRAL da rede (window.AcessoSME), carregado por
+ * /central/acesso-sme.js no index.html. Se não houver sessão, o próprio
+ * acesso-sme.js redireciona para /central/login.html.
+ *
+ * Modelo "Fase 1" (igual ao GOM): o central governa QUEM entra e o PAPEL
+ * (SME/EMPRESA). Os DADOS continuam no Supabase do Roçadas (src/lib/supabase).
+ * A mesma interface AuthContextType é mantida para o resto do app não mudar.
+ * ========================================================================== */
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Espera um global aparecer (os scripts do central carregam fora do bundle).
+function waitFor<T>(get: () => T | undefined | null, timeoutMs: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    (function tick() {
+      const v = get();
+      if (v) return resolve(v as T);
+      if (Date.now() - start > timeoutMs) return resolve(null);
+      setTimeout(tick, 50);
+    })();
+  });
+}
+
+// AcessoSME.sistema.papel / perfil.tipo -> perfil do Roçadas (SME | EMPRESA).
+function mapearPerfil(A: any): UserProfile {
+  if (A?.perfil?.is_super_admin) return 'SME';
+  const papel = String(A?.sistema?.papel || A?.perfil?.tipo || '').toLowerCase();
+  if (papel.indexOf('empresa') >= 0 || papel === 'externo') return 'EMPRESA';
+  return 'SME';
+}
+
+const LOGIN_URL = () =>
+  (typeof window !== 'undefined' && (window as any).ACESSO_LOGIN) || '/central/login.html';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [primeiroAcesso, setPrimeiroAcesso] = useState(false);
-
-  const carregarPerfil = async (userId: string, email: string) => {
-    const { data: perfil } = await supabase
-      .from('perfis')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (perfil) {
-      setUsuario({
-        id: userId,
-        email,
-        nome: perfil.nome,
-        perfil: perfil.perfil as UserProfile,
-        ativo: perfil.ativo,
-      });
-      setPrimeiroAcesso(perfil.primeiro_acesso ?? false);
-    }
-  };
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        if (session?.user) {
-          await carregarPerfil(session.user.id, session.user.email || '');
-        }
-      } catch (err) {
-        console.error('Erro ao inicializar autenticação:', err);
-        setError('Erro ao carregar sessão');
-      } finally {
+    let cancelado = false;
+
+    (async () => {
+      // 1) Espera o módulo do central (window.AcessoSME) ficar disponível.
+      const A: any = await waitFor(() => (window as any).AcessoSME, 8000);
+      if (cancelado) return;
+      if (!A) {
+        setError('Controle de acesso central indisponível.');
         setLoading(false);
+        return;
       }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await carregarPerfil(session.user.id, session.user.email || '');
-      } else {
-        setUsuario(null);
-        setPrimeiroAcesso(false);
+      try {
+        // 2) Aguarda a verificação de acesso. Sem sessão, o acesso-sme.js já
+        //    redireciona para o login central — aqui só resolve quando OK.
+        await A.pronto;
+        if (cancelado) return;
+        if (A.perfil) {
+          setUsuario({
+            id: String(A.perfil.id ?? A.perfil.email ?? ''),
+            email: A.perfil.email || '',
+            nome: A.perfil.nome || A.perfil.email || '',
+            perfil: mapearPerfil(A),
+            ativo: true,
+          });
+        }
+      } catch {
+        if (!cancelado) setError('Falha ao verificar seu acesso no central.');
+      } finally {
+        if (!cancelado) setLoading(false);
       }
-    });
+    })();
 
-    return () => { subscription?.unsubscribe(); };
+    return () => { cancelado = true; };
   }, []);
 
-  const login = async (email: string, password: string) => {
-    try {
-      setError(null);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      if (data.user) {
-        await carregarPerfil(data.user.id, data.user.email || '');
-      }
-    } catch (err: any) {
-      const mensagem = err?.message || 'Erro ao fazer login. Verifique suas credenciais.';
-      setError(mensagem);
-      throw err;
-    }
+  // Login/cadastro/senha são gerenciados pelo CENTRAL — mantidos por compat.
+  const login = async () => {
+    window.location.href = LOGIN_URL();
   };
 
   const logout = async () => {
-    try {
-      setError(null);
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      setUsuario(null);
-      setPrimeiroAcesso(false);
-    } catch (err: any) {
-      setError('Erro ao fazer logout');
-      throw err;
+    const A: any = (window as any).AcessoSME;
+    if (A && typeof A.signOut === 'function') {
+      await A.signOut();
+    } else {
+      window.location.href = LOGIN_URL();
     }
   };
 
-  const trocarSenha = async (novaSenha: string) => {
-    const { error } = await supabase.auth.updateUser({ password: novaSenha });
-    if (error) throw error;
-
-    // Marcar primeiro acesso como concluído
-    if (usuario) {
-      await supabase
-        .from('perfis')
-        .update({ primeiro_acesso: false })
-        .eq('user_id', usuario.id);
-      setPrimeiroAcesso(false);
-    }
+  const signUp = async () => {
+    throw new Error('O cadastro de usuários é feito no Controle de Acesso Central.');
   };
 
-  const signUp = async (email: string, password: string, nome: string) => {
-    try {
-      setError(null);
-      const { data: { user }, error: signUpError } = await supabase.auth.signUp({ email, password });
-      if (signUpError) throw signUpError;
-      if (!user) throw new Error('Falha ao criar usuário');
-
-      const { error: perfilError } = await supabase.from('perfis').insert({
-        user_id: user.id,
-        nome,
-        perfil: 'EMPRESA',
-        ativo: true,
-        primeiro_acesso: true,
-      });
-      if (perfilError) throw perfilError;
-    } catch (err: any) {
-      const mensagem = err?.message || 'Erro ao criar conta';
-      setError(mensagem);
-      throw err;
-    }
+  const trocarSenha = async () => {
+    throw new Error('A senha é gerenciada pelo Controle de Acesso Central.');
   };
 
   const value: AuthContextType = {
@@ -134,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: !!usuario && usuario.ativo,
     isSME: usuario?.perfil === 'SME',
     isEmpresa: usuario?.perfil === 'EMPRESA',
-    primeiroAcesso,
+    primeiroAcesso: false,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -21,6 +21,21 @@
         }
       }(window.location));
     </script>
+    <!-- Controle de Acesso CENTRAL (login + telas) — SOMENTE nesta build (develop / /teste).
+         A produção (main) não carrega isto e mantém o login próprio do Roçadas.
+         Injeção dinâmica: o Vite não tenta resolver os caminhos /central/ no build. -->
+    <script>
+      window.ACESSO_SISTEMA = 'rocada';
+      window.ACESSO_LOGIN = '/central/login.html';
+      (function () {
+        ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+         '/central/config.js',
+         '/central/acesso-sme.js'].forEach(function (src) {
+          var s = document.createElement('script');
+          s.src = src; s.async = false; document.head.appendChild(s);
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
