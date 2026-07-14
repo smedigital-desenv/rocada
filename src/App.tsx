@@ -121,7 +121,7 @@ const AppContent: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router basename="/rocada">
+      <Router basename={(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'}>
         <AuthProvider>
           <AppContent />
         </AuthProvider>

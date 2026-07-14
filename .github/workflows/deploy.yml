@@ -1,8 +1,8 @@
-name: Deploy para GitHub Pages
+name: Deploy para GitHub Pages (produção + homologação)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   workflow_dispatch:
 
 permissions:
@@ -21,22 +21,49 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Baixar main (produção)
         uses: actions/checkout@v4
+        with:
+          ref: main
+          path: _src/main
+
+      - name: Baixar develop (homologação)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          path: _src/develop
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Instalar dependências
-        run: npm install
-
-      - name: Build
-        run: npm run build
+      - name: Build main (base /rocada/)
+        working-directory: _src/main
+        run: npm install && npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Build develop (base /rocada/teste/)
+        working-directory: _src/develop
+        run: npm install && npm run build
+        env:
+          VITE_BASE: /rocada/teste/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Montar o site (main na raiz, develop em /teste)
+        run: |
+          mkdir -p _site
+          cp -r _src/main/dist/. _site/
+          mkdir -p _site/teste
+          cp -r _src/develop/dist/. _site/teste/
+          # o 404 do /teste precisa preservar 2 segmentos do caminho (/rocada/teste/)
+          if [ -f _site/teste/404.html ]; then
+            sed -i 's/segmentsToKeep = 1/segmentsToKeep = 2/' _site/teste/404.html
+          fi
+          touch _site/.nojekyll
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -44,7 +71,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './_site'
 
   deploy:
     environment:
