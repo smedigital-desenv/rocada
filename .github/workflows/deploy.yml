@@ -59,10 +59,14 @@ jobs:
           cp -r _src/main/dist/. _site/
           mkdir -p _site/teste
           cp -r _src/develop/dist/. _site/teste/
-          # o 404 do /teste precisa preservar 2 segmentos do caminho (/rocada/teste/)
-          if [ -f _site/teste/404.html ]; then
-            sed -i 's/segmentsToKeep = 1/segmentsToKeep = 2/' _site/teste/404.html
-          fi
+          # O GitHub Pages serve UM ÚNICO 404 (o da raiz) para todos os caminhos.
+          # Torna-o "esperto": se o 2º segmento for 'teste', preserva 2 segmentos
+          # (/rocada/teste); senão, 1 (/rocada). Assim as rotas do /teste não caem
+          # na produção. Vale para a raiz e para dentro do /teste.
+          SMART="var segmentsToKeep = (location.pathname.split('/')[2] === 'teste') ? 2 : 1;"
+          for f in _site/404.html _site/teste/404.html; do
+            [ -f "$f" ] && sed -i "s#var segmentsToKeep = 1;#${SMART}#" "$f"
+          done
           touch _site/.nojekyll
 
       - name: Setup Pages
